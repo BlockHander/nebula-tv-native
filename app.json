@@ -1,0 +1,26 @@
+{
+  "expo": {
+    "name": "NebulaTV",
+    "slug": "nebula-tv",
+    "version": "1.0.0",
+    "orientation": "landscape",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "dark",
+    "splash": {
+      "backgroundColor": "#030712"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.nebula.tv"
+    },
+    "android": {
+      "package": "com.nebula.tv",
+      "permissions": []
+    },
+    "plugins": [
+      "expo-video",
+      "expo-asset",
+      "expo-font"
+    ]
+  }
+}
