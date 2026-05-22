@@ -1,7 +1,8 @@
-import React from 'react'
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
+// ── Nebula TV — Error View (TV-Optimized) ─────
+// Larger text, focusable retry button with parallax.
 
-// ── Props ─────────────────────────────────────────
+import React, { useState } from 'react'
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native'
 
 interface ErrorViewProps {
   message: string
@@ -9,27 +10,27 @@ interface ErrorViewProps {
   style?: Record<string, unknown>
 }
 
-// ── Component ─────────────────────────────────────
+const ErrorView: React.FC<ErrorViewProps> = ({ message, onRetry, style }) => {
+  const [focused, setFocused] = useState(false)
 
-const ErrorView: React.FC<ErrorViewProps> = ({
-  message,
-  onRetry,
-  style,
-}) => {
   return (
     <View style={[styles.container, style]}>
-      {/* Error Icon */}
       <Text style={styles.icon}>⚠️</Text>
-
-      {/* Error Message */}
       <Text style={styles.message}>{message}</Text>
-
-      {/* Retry Button */}
       {onRetry ? (
         <TouchableOpacity
           activeOpacity={0.7}
           onPress={onRetry}
-          style={styles.retryButton}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          style={[styles.retryButton, focused && styles.retryFocused]}
+          tvParallaxProperties={{
+            enabled: true,
+            shiftDistanceX: 3,
+            shiftDistanceY: 3,
+            tiltAngle: 5,
+            magnification: 1.05,
+          }}
         >
           <Text style={styles.retryText}>Retry</Text>
         </TouchableOpacity>
@@ -38,44 +39,47 @@ const ErrorView: React.FC<ErrorViewProps> = ({
   )
 }
 
-// ── Styles ────────────────────────────────────────
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#030712',
-    paddingHorizontal: 32,
-    gap: 12,
+    paddingHorizontal: 48,
+    gap: 16,
     minHeight: 200,
   },
   icon: {
-    fontSize: 48,
-    marginBottom: 4,
+    fontSize: 56,
+    marginBottom: 8,
   },
   message: {
-    color: '#f9fafb',
-    fontSize: 16,
-    fontWeight: '500',
+    color: '#f1f5f9',
+    fontSize: 20,
+    fontWeight: '600',
     textAlign: 'center',
-    lineHeight: 22,
-    maxWidth: 400,
+    lineHeight: 28,
+    maxWidth: 500,
   },
   retryButton: {
-    marginTop: 8,
-    backgroundColor: '#3b82f6',
-    paddingHorizontal: 28,
-    paddingVertical: 12,
-    borderRadius: 8,
-    minWidth: 48,
-    minHeight: 48,
+    marginTop: 12,
+    backgroundColor: '#1d4ed8',
+    paddingHorizontal: 36,
+    paddingVertical: 16,
+    borderRadius: 12,
+    minWidth: 64,
+    minHeight: 56,
     justifyContent: 'center',
     alignItems: 'center',
+    borderWidth: 2,
+    borderColor: 'transparent',
+  },
+  retryFocused: {
+    borderColor: '#93c5fd',
   },
   retryText: {
-    color: '#f9fafb',
-    fontSize: 16,
+    color: '#ffffff',
+    fontSize: 18,
     fontWeight: '700',
     letterSpacing: 0.5,
   },

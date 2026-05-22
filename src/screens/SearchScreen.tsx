@@ -1,24 +1,26 @@
+// ── Nebula TV — Search Screen (TV-Optimized) ──
+// No TextInput — uses TVKeyboard modal for D-pad entry.
+// Overscan-safe margins, larger result cards.
+
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
 import {
   View,
   Text,
-  TextInput,
   ScrollView,
-  StyleSheet,
   TouchableOpacity,
+  Modal,
+  StyleSheet,
 } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
 import { fetchVideos } from '../services/api'
 import ContentCard from '../components/ContentCard'
+import TVKeyboard from '../components/TVKeyboard'
 import LoadingSpinner from '../components/LoadingSpinner'
 import ErrorView from '../components/ErrorView'
 import type { NebulaVideo } from '../types'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import type { RootStackParamList } from '../../App'
 
-// ── Constants ─────────────────────────────────────
-
-const DEBOUNCE_MS = 300
 const SUGGESTIONS = [
   'Try different keywords',
   'Browse trending videos',
@@ -26,34 +28,18 @@ const SUGGESTIONS = [
   'Search for a specific creator',
 ]
 
-// ── Helpers ────────────────────────────────────────
-
 function matchesQuery(video: NebulaVideo, query: string): boolean {
   const q = query.toLowerCase().trim()
-
-  // Title match
   if (video.title.toLowerCase().includes(q)) return true
-
-  // Description match
-  if (video.description.toLowerCase().includes(q)) return true
-
-  // Short description match
+  if (video.description?.toLowerCase().includes(q)) return true
   if (video.short_description?.toLowerCase().includes(q)) return true
-
-  // Channel match
   if (video.channel_title?.toLowerCase().includes(q)) return true
-
-  // Category match
   if (
     Array.isArray(video.category_slugs) &&
     video.category_slugs.some((slug) => slug.toLowerCase().includes(q))
-  )
-    return true
-
+  ) return true
   return false
 }
-
-// ── Component ──────────────────────────────────────
 
 const SearchScreen: React.FC = () => {
   const navigation =
@@ -65,10 +51,10 @@ const SearchScreen: React.FC = () => {
 
   const [searchText, setSearchText] = useState('')
   const [debouncedQuery, setDebouncedQuery] = useState('')
+  const [keyboardVisible, setKeyboardVisible] = useState(false)
   const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
-  // ── Data Fetching ──────────────────────────────────
-
+  // ── Data Fetching ──
   const loadVideos = useCallback(async () => {
     setLoading(true)
     setError(null)
@@ -90,37 +76,31 @@ const SearchScreen: React.FC = () => {
     loadVideos()
   }, [loadVideos])
 
-  // ── Debounce ───────────────────────────────────────
-
-  const handleSearchTextChange = useCallback((text: string) => {
+  // ── Keyboard Handler ──
+  const handleKeyboardSubmit = useCallback((text: string) => {
     setSearchText(text)
-
-    if (debounceTimer.current) {
-      clearTimeout(debounceTimer.current)
-    }
-
+    setKeyboardVisible(false)
+    // Debounce the query
+    if (debounceTimer.current) clearTimeout(debounceTimer.current)
     debounceTimer.current = setTimeout(() => {
       setDebouncedQuery(text)
-    }, DEBOUNCE_MS)
+    }, 300)
   }, [])
 
-  // Cleanup timer on unmount
-  useEffect(() => {
-    return () => {
-      if (debounceTimer.current) {
-        clearTimeout(debounceTimer.current)
-      }
-    }
+  const handleOpenKeyboard = useCallback(() => {
+    setKeyboardVisible(true)
   }, [])
 
-  // ── Filtered Results ──────────────────────────────
+  const handleClearSearch = useCallback(() => {
+    setSearchText('')
+    setDebouncedQuery('')
+  }, [])
 
+  // ── Filtered Results ──
   const results = useMemo<NebulaVideo[]>(() => {
     if (!debouncedQuery.trim()) return []
     return allVideos.filter((v) => matchesQuery(v, debouncedQuery))
   }, [allVideos, debouncedQuery])
-
-  // ── Handlers ───────────────────────────────────────
 
   const handleVideoPress = useCallback(
     (video: NebulaVideo) => {
@@ -128,13 +108,6 @@ const SearchScreen: React.FC = () => {
     },
     [navigation],
   )
-
-  const handleClearSearch = useCallback(() => {
-    setSearchText('')
-    setDebouncedQuery('')
-  }, [])
-
-  // ── Render: Loading ────────────────────────────────
 
   if (loading) {
     return (
@@ -144,8 +117,6 @@ const SearchScreen: React.FC = () => {
     )
   }
 
-  // ── Render: Error ──────────────────────────────────
-
   if (error) {
     return (
       <View style={styles.screen}>
@@ -154,61 +125,67 @@ const SearchScreen: React.FC = () => {
     )
   }
 
-  // ── Render: Content ────────────────────────────────
-
   const isSearching = debouncedQuery.trim().length > 0
   const hasResults = results.length > 0
 
   return (
     <View style={styles.screen}>
-      {/* ── Search Bar ────────────────────────────────── */}
+      {/* ── Search Bar ── */}
       <View style={styles.searchBarContainer}>
-        <View style={styles.searchBar}>
-          {/* Search icon */}
+        <TouchableOpacity
+          style={styles.searchBar}
+          onPress={handleOpenKeyboard}
+          activeOpacity={0.7}
+          tvParallaxProperties={{
+            enabled: true,
+            shiftDistanceX: 2,
+            shiftDistanceY: 2,
+            tiltAngle: 3,
+            magnification: 1.02,
+          }}
+        >
           <Text style={styles.searchIcon}>🔍</Text>
-
-          <TextInput
-            style={styles.searchInput}
-            placeholder="Search videos, creators, categories..."
-            placeholderTextColor="#6b7280"
-            value={searchText}
-            onChangeText={handleSearchTextChange}
-            autoCapitalize="none"
-            autoCorrect={false}
-            returnKeyType="search"
-            clearButtonMode="never"
-          />
-
-          {/* Clear button */}
+          <Text
+            style={[
+              styles.searchText,
+              !searchText && styles.searchPlaceholder,
+            ]}
+            numberOfLines={1}
+          >
+            {searchText || 'Search videos, creators, categories...'}
+          </Text>
           {searchText.length > 0 && (
             <TouchableOpacity
               style={styles.clearButton}
               onPress={handleClearSearch}
-              activeOpacity={0.7}
+              activeOpacity={0.6}
+              tvParallaxProperties={{
+                enabled: true,
+                shiftDistanceX: 1,
+                shiftDistanceY: 1,
+                tiltAngle: 2,
+                magnification: 1.05,
+              }}
             >
               <Text style={styles.clearButtonText}>✕</Text>
             </TouchableOpacity>
           )}
-        </View>
+        </TouchableOpacity>
       </View>
 
-      {/* ── Results Area ──────────────────────────────── */}
+      {/* ── Results ── */}
       <ScrollView
         style={styles.scrollArea}
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
       >
         {!isSearching ? (
-          // ── Idle / Suggestions State ───────────────
           <View style={styles.idleContainer}>
             <Text style={styles.idleIcon}>🔮</Text>
             <Text style={styles.idleTitle}>Search Nebula</Text>
             <Text style={styles.idleMessage}>
-              Find your next favorite video. Search by title, creator, or
-              category.
+              Find your next favorite video. Press the search bar above to begin.
             </Text>
-
             <View style={styles.suggestionsContainer}>
               <Text style={styles.suggestionsTitle}>Suggestions</Text>
               {SUGGESTIONS.map((suggestion, index) => (
@@ -219,13 +196,11 @@ const SearchScreen: React.FC = () => {
             </View>
           </View>
         ) : hasResults ? (
-          // ── Results ─────────────────────────────────
           <>
             <Text style={styles.resultsHeader}>
               {results.length} result{results.length !== 1 ? 's' : ''} for "
               {debouncedQuery}"
             </Text>
-
             <View style={styles.grid}>
               {results.map((video) => (
                 <View key={video.id} style={styles.gridItem}>
@@ -235,7 +210,6 @@ const SearchScreen: React.FC = () => {
             </View>
           </>
         ) : (
-          // ── No Results ───────────────────────────────
           <View style={styles.noResultsContainer}>
             <Text style={styles.noResultsIcon}>😕</Text>
             <Text style={styles.noResultsTitle}>
@@ -245,7 +219,6 @@ const SearchScreen: React.FC = () => {
               Try a different search term or browse categories to discover new
               content.
             </Text>
-
             <View style={styles.suggestionsContainer}>
               <Text style={styles.suggestionsTitle}>Suggestions</Text>
               {SUGGESTIONS.map((suggestion, index) => (
@@ -257,14 +230,29 @@ const SearchScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Bottom spacing */}
         <View style={styles.bottomSpacer} />
       </ScrollView>
+
+      {/* ── TV Keyboard Modal ── */}
+      <Modal
+        visible={keyboardVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setKeyboardVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Search Nebula</Text>
+            <TVKeyboard
+              onTokenComplete={handleKeyboardSubmit}
+              onCancel={() => setKeyboardVisible(false)}
+            />
+          </View>
+        </View>
+      </Modal>
     </View>
   )
 }
-
-// ── Styles ─────────────────────────────────────────
 
 const styles = StyleSheet.create({
   screen: {
@@ -272,155 +260,183 @@ const styles = StyleSheet.create({
     backgroundColor: '#030712',
   },
 
-  // ── Search Bar ─────────────────────────────────────
+  // ── Search Bar ──
   searchBarContainer: {
-    paddingHorizontal: 16,
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingLeft: 48,
+    paddingRight: 48,
+    paddingTop: 48,
+    paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#1f2937',
+    borderBottomColor: '#1e293b',
     backgroundColor: '#030712',
   },
   searchBar: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#111827',
-    borderRadius: 12,
-    borderWidth: 1,
-    borderColor: '#1f2937',
-    paddingHorizontal: 14,
-    minHeight: 52,
+    backgroundColor: '#0f172a',
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#1e293b',
+    paddingHorizontal: 20,
+    minHeight: 64,
+    gap: 12,
   },
   searchIcon: {
-    fontSize: 18,
-    marginRight: 10,
+    fontSize: 22,
   },
-  searchInput: {
+  searchText: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 19,
+    fontWeight: '600',
+    color: '#f1f5f9',
+  },
+  searchPlaceholder: {
+    color: '#64748b',
     fontWeight: '500',
-    color: '#f9fafb',
-    paddingVertical: 12,
   },
   clearButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#374151',
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: '#334155',
     justifyContent: 'center',
     alignItems: 'center',
     marginLeft: 8,
   },
   clearButtonText: {
-    color: '#f9fafb',
-    fontSize: 14,
+    color: '#f1f5f9',
+    fontSize: 18,
     fontWeight: '700',
   },
 
-  // ── Scroll / Results Area ─────────────────────────
+  // ── Results Area ──
   scrollArea: {
     flex: 1,
   },
   scrollContent: {
-    paddingBottom: 32,
+    paddingLeft: 48,
+    paddingRight: 48,
+    paddingBottom: 48,
   },
-
-  // ── Idle / Suggestions State ──────────────────────
-  idleContainer: {
-    alignItems: 'center',
-    paddingTop: 64,
-    paddingHorizontal: 32,
-    gap: 8,
-  },
-  idleIcon: {
-    fontSize: 64,
-    marginBottom: 8,
-  },
-  idleTitle: {
-    fontSize: 22,
-    fontWeight: '700',
-    color: '#f9fafb',
-    textAlign: 'center',
-  },
-  idleMessage: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#9ca3af',
-    textAlign: 'center',
-    lineHeight: 22,
-    maxWidth: 360,
-    marginBottom: 8,
-  },
-  suggestionsContainer: {
-    marginTop: 24,
-    alignItems: 'flex-start',
-    width: '100%',
-    maxWidth: 360,
-    gap: 8,
-  },
-  suggestionsTitle: {
-    fontSize: 14,
-    fontWeight: '700',
-    color: '#6b7280',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 4,
-  },
-  suggestionItem: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#9ca3af',
-    lineHeight: 22,
-  },
-
-  // ── Results ────────────────────────────────────────
   resultsHeader: {
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
-    color: '#9ca3af',
-    paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 16,
+    color: '#94a3b8',
+    paddingHorizontal: 4,
+    paddingTop: 24,
+    paddingBottom: 20,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 16,
+    gap: 20,
     justifyContent: 'flex-start',
-    paddingHorizontal: 16,
   },
   gridItem: {
-    marginBottom: 4,
-  },
-
-  // ── No Results ─────────────────────────────────────
-  noResultsContainer: {
-    alignItems: 'center',
-    paddingTop: 48,
-    paddingHorizontal: 32,
-    gap: 8,
-  },
-  noResultsIcon: {
-    fontSize: 56,
-    marginBottom: 4,
-  },
-  noResultsTitle: {
-    fontSize: 18,
-    fontWeight: '700',
-    color: '#f9fafb',
-    textAlign: 'center',
-  },
-  noResultsMessage: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: '#9ca3af',
-    textAlign: 'center',
-    lineHeight: 22,
-    maxWidth: 360,
     marginBottom: 8,
   },
 
-  // ── Utility ────────────────────────────────────────
+  // ── Idle State ──
+  idleContainer: {
+    alignItems: 'center',
+    paddingTop: 80,
+    paddingHorizontal: 48,
+    gap: 12,
+  },
+  idleIcon: {
+    fontSize: 72,
+    marginBottom: 12,
+  },
+  idleTitle: {
+    fontSize: 28,
+    fontWeight: '700',
+    color: '#f8fafc',
+    textAlign: 'center',
+  },
+  idleMessage: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#94a3b8',
+    textAlign: 'center',
+    lineHeight: 26,
+    maxWidth: 480,
+    marginBottom: 12,
+  },
+  suggestionsContainer: {
+    marginTop: 28,
+    alignItems: 'flex-start',
+    width: '100%',
+    maxWidth: 400,
+    gap: 10,
+  },
+  suggestionsTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  suggestionItem: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#94a3b8',
+    lineHeight: 26,
+  },
+
+  // ── No Results ──
+  noResultsContainer: {
+    alignItems: 'center',
+    paddingTop: 64,
+    paddingHorizontal: 48,
+    gap: 12,
+  },
+  noResultsIcon: {
+    fontSize: 64,
+    marginBottom: 8,
+  },
+  noResultsTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#f8fafc',
+    textAlign: 'center',
+  },
+  noResultsMessage: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#94a3b8',
+    textAlign: 'center',
+    lineHeight: 26,
+    maxWidth: 480,
+    marginBottom: 12,
+  },
+
+  // ── Keyboard Modal ──
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(3, 7, 18, 0.92)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 48,
+  },
+  modalContent: {
+    backgroundColor: '#0f172a',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#1e293b',
+    padding: 36,
+    maxWidth: 920,
+    width: '100%',
+    alignItems: 'center',
+  },
+  modalTitle: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#f8fafc',
+    marginBottom: 20,
+  },
+
+  // ── Utility ──
   bottomSpacer: {
     height: 48,
   },

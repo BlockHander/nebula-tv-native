@@ -1,3 +1,7 @@
+// ── Nebula TV — Explore Screen (TV-Optimized) ──
+// Larger category chips, TV-friendly content grid,
+// overscan-safe 48dp margins, D-pad navigation.
+
 import React, { useEffect, useState, useCallback } from 'react'
 import {
   View,
@@ -15,11 +19,7 @@ import type { NebulaVideo, NebulaCategory } from '../types'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import type { RootStackParamList } from '../../App'
 
-// ── Constants ─────────────────────────────────────
-
 const ALL_CATEGORY = '__all__'
-
-// ── Component ──────────────────────────────────────
 
 const ExploreScreen: React.FC = () => {
   const navigation =
@@ -30,8 +30,6 @@ const ExploreScreen: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState<string>(ALL_CATEGORY)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  // ── Data Fetching ──────────────────────────────────
 
   const loadData = useCallback(async () => {
     setLoading(true)
@@ -58,20 +56,14 @@ const ExploreScreen: React.FC = () => {
     loadData()
   }, [loadData])
 
-  // ── Derived Data ───────────────────────────────────
-
   const filteredVideos = useCallback((): NebulaVideo[] => {
-    if (selectedCategory === ALL_CATEGORY) {
-      return videos
-    }
+    if (selectedCategory === ALL_CATEGORY) return videos
     return videos.filter(
       (video) =>
         Array.isArray(video.category_slugs) &&
         video.category_slugs.includes(selectedCategory),
     )
   }, [videos, selectedCategory])
-
-  // ── Handlers ───────────────────────────────────────
 
   const handleCategoryPress = useCallback((slug: string) => {
     setSelectedCategory(slug)
@@ -84,8 +76,6 @@ const ExploreScreen: React.FC = () => {
     [navigation],
   )
 
-  // ── Render: Loading ────────────────────────────────
-
   if (loading) {
     return (
       <View style={styles.screen}>
@@ -93,8 +83,6 @@ const ExploreScreen: React.FC = () => {
       </View>
     )
   }
-
-  // ── Render: Error ──────────────────────────────────
 
   if (error) {
     return (
@@ -104,8 +92,6 @@ const ExploreScreen: React.FC = () => {
     )
   }
 
-  // ── Render: Empty ──────────────────────────────────
-
   if (videos.length === 0) {
     return (
       <View style={styles.screen}>
@@ -113,22 +99,19 @@ const ExploreScreen: React.FC = () => {
           <Text style={styles.emptyIcon}>🗺️</Text>
           <Text style={styles.emptyTitle}>Nothing to Explore Yet</Text>
           <Text style={styles.emptyMessage}>
-            No content has been published. Check back later for new videos and
-            categories.
+            No content has been published. Check back later.
           </Text>
         </View>
       </View>
     )
   }
 
-  // ── Render: Content ────────────────────────────────
-
   const displayVideos = filteredVideos()
   const hasResults = displayVideos.length > 0
 
   return (
     <View style={styles.screen}>
-      {/* ── Category Filter Chips ──────────────────── */}
+      {/* ── Category Filter Bar ── */}
       <View style={styles.categoryBar}>
         <ScrollView
           horizontal
@@ -140,7 +123,6 @@ const ExploreScreen: React.FC = () => {
             isSelected={selectedCategory === ALL_CATEGORY}
             onPress={() => handleCategoryPress(ALL_CATEGORY)}
           />
-
           {categories.map((cat) => (
             <CategoryChip
               key={cat.id}
@@ -149,19 +131,16 @@ const ExploreScreen: React.FC = () => {
               onPress={() => handleCategoryPress(cat.slug)}
             />
           ))}
-
-          {/* Right padding spacer */}
-          <View style={{ width: 16 }} />
+          <View style={{ width: 24 }} />
         </ScrollView>
       </View>
 
-      {/* ── Content Grid ─────────────────────────────── */}
+      {/* ── Content Grid ── */}
       <ScrollView
         style={styles.scrollArea}
         contentContainerStyle={styles.gridContainer}
         showsVerticalScrollIndicator={false}
       >
-        {/* Section header */}
         <Text style={styles.sectionHeader}>
           {selectedCategory === ALL_CATEGORY
             ? 'All Videos'
@@ -192,14 +171,11 @@ const ExploreScreen: React.FC = () => {
           </View>
         )}
 
-        {/* Bottom spacing */}
         <View style={styles.bottomSpacer} />
       </ScrollView>
     </View>
   )
 }
-
-// ── Styles ─────────────────────────────────────────
 
 const styles = StyleSheet.create({
   screen: {
@@ -207,98 +183,97 @@ const styles = StyleSheet.create({
     backgroundColor: '#030712',
   },
 
-  // ── Category Filter Bar ────────────────────────────
+  // ── Category Filter Bar ──
   categoryBar: {
-    paddingTop: 16,
-    paddingBottom: 12,
+    paddingTop: 48,
+    paddingBottom: 16,
     borderBottomWidth: 1,
-    borderBottomColor: '#1f2937',
+    borderBottomColor: '#1e293b',
     backgroundColor: '#030712',
+    paddingLeft: 48,
   },
   chipRow: {
-    paddingLeft: 16,
-    gap: 10,
+    gap: 14,
     alignItems: 'center',
   },
 
-  // ── Scroll / Grid Area ────────────────────────────
+  // ── Content Grid ──
   scrollArea: {
     flex: 1,
   },
   gridContainer: {
-    paddingTop: 20,
-    paddingHorizontal: 16,
-    paddingBottom: 32,
+    paddingTop: 28,
+    paddingLeft: 48,
+    paddingRight: 48,
+    paddingBottom: 48,
   },
   sectionHeader: {
-    fontSize: 22,
+    fontSize: 28,
     fontWeight: '700',
-    color: '#f9fafb',
-    marginBottom: 16,
+    color: '#f8fafc',
+    marginBottom: 24,
     paddingHorizontal: 4,
   },
   grid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 16,
+    gap: 20,
     justifyContent: 'flex-start',
   },
   gridItem: {
-    // ContentCard is 288px wide; two cards per row with gap
-    // On TV screens this will look good with 3-4 cards per row
-    marginBottom: 4,
+    marginBottom: 8,
   },
 
-  // ── Empty / No Results ─────────────────────────────
+  // ── Empty / No Results ──
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 32,
-    gap: 12,
+    paddingHorizontal: 48,
+    gap: 16,
   },
   emptyIcon: {
-    fontSize: 64,
-    marginBottom: 8,
+    fontSize: 72,
+    marginBottom: 12,
   },
   emptyTitle: {
-    fontSize: 22,
+    fontSize: 28,
     fontWeight: '700',
-    color: '#f9fafb',
+    color: '#f8fafc',
     textAlign: 'center',
   },
   emptyMessage: {
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: '500',
-    color: '#9ca3af',
+    color: '#94a3b8',
     textAlign: 'center',
-    lineHeight: 22,
-    maxWidth: 360,
+    lineHeight: 26,
+    maxWidth: 480,
   },
   noResultsContainer: {
     alignItems: 'center',
-    paddingVertical: 48,
-    gap: 8,
+    paddingVertical: 64,
+    gap: 12,
   },
   noResultsIcon: {
-    fontSize: 40,
-    marginBottom: 4,
+    fontSize: 48,
+    marginBottom: 8,
   },
   noResultsText: {
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: '600',
-    color: '#f9fafb',
+    color: '#f8fafc',
     textAlign: 'center',
   },
   noResultsHint: {
-    fontSize: 14,
+    fontSize: 17,
     fontWeight: '500',
-    color: '#9ca3af',
+    color: '#94a3b8',
     textAlign: 'center',
-    maxWidth: 300,
+    maxWidth: 400,
   },
 
-  // ── Utility ────────────────────────────────────────
+  // ── Utility ──
   bottomSpacer: {
     height: 48,
   },

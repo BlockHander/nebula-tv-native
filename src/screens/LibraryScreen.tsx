@@ -1,56 +1,40 @@
-// ──────────────────────────────────────────────
-// Nebula TV — Library Screen (TV-optimized)
-// ──────────────────────────────────────────────
+// ── Nebula TV — Library Screen (TV-Optimized) ──
+// Focusable cards with parallax, larger typography,
+// overscan-safe margins, TV-friendly sign-out button.
 
-import React, { useCallback } from 'react'
+import React, { useState, useCallback } from 'react'
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
   StyleSheet,
-  Platform,
 } from 'react-native'
 import { useAuth } from '../context/AuthContext'
 
-// ── Helpers ────────────────────────────────────
+// ── Helpers ──
 
-/**
- * Mask an auth token for display: show first 8 + last 4 characters.
- * Returns '••••••••' for empty/null tokens.
- */
 function maskToken(token: string | null): string {
   if (!token || token.length === 0) return '••••••••'
   if (token.length <= 12) {
-    // Short token — show first half + last half masked
     const half = Math.ceil(token.length / 2)
     return token.slice(0, half) + '•'.repeat(token.length - half)
   }
   return `${token.slice(0, 8)}${'•'.repeat(token.length - 12)}${token.slice(-4)}`
 }
 
-// ── Placeholder Sections ───────────────────────
-
-interface LibraryPlaceholder {
-  id: string
-  title: string
-  description: string
-  icon: string
-  count: number
-}
-
-const PLACEHOLDER_SECTIONS: LibraryPlaceholder[] = [
+const PLACEHOLDER_SECTIONS = [
   {
     id: 'watch-later',
     title: 'Watch Later',
-    description: 'Videos you\'ve saved to watch later',
+    description: "Videos you've saved to watch later",
     icon: '⏰',
     count: 0,
   },
   {
     id: 'history',
     title: 'History',
-    description: 'Videos you\'ve watched recently',
+    description: "Videos you've watched recently",
     icon: '🕐',
     count: 0,
   },
@@ -63,12 +47,11 @@ const PLACEHOLDER_SECTIONS: LibraryPlaceholder[] = [
   },
 ]
 
-// ── Avatar Component ───────────────────────────
+// ── Avatar Component ──
 
 function AvatarCircle() {
   return (
     <View style={styles.avatarOuter}>
-      {/* Inner glow ring */}
       <View style={styles.avatarRing}>
         <View style={styles.avatarInner}>
           <Text style={styles.avatarLetter}>N</Text>
@@ -78,10 +61,56 @@ function AvatarCircle() {
   )
 }
 
-// ── Component ──────────────────────────────────
+// ── Section Card ──
+
+function PlaceholderCard({
+  section,
+}: {
+  section: typeof PLACEHOLDER_SECTIONS[number]
+}) {
+  const [focused, setFocused] = useState(false)
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.8}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      style={[styles.placeholderCard, focused && styles.placeholderCardFocused]}
+      tvParallaxProperties={{
+        enabled: true,
+        shiftDistanceX: 2,
+        shiftDistanceY: 2,
+        tiltAngle: 3,
+        magnification: 1.02,
+      }}
+    >
+      <View style={styles.placeholderRow}>
+        <View style={styles.placeholderIconContainer}>
+          <Text style={styles.placeholderIcon}>{section.icon}</Text>
+        </View>
+        <View style={styles.placeholderInfo}>
+          <Text style={styles.placeholderTitle}>{section.title}</Text>
+          <Text style={styles.placeholderDescription}>
+            {section.description}
+          </Text>
+        </View>
+        <View style={styles.placeholderCountContainer}>
+          <Text style={styles.placeholderCount}>{section.count}</Text>
+          <Text style={styles.placeholderCountLabel}>items</Text>
+        </View>
+      </View>
+      <View style={styles.comingSoonBadge}>
+        <Text style={styles.comingSoonText}>Coming soon</Text>
+      </View>
+    </TouchableOpacity>
+  )
+}
+
+// ── Component ──
 
 const LibraryScreen: React.FC = () => {
-  const { authToken, logout, isAuthenticated } = useAuth()
+  const { authToken, logout } = useAuth()
+  const [signOutFocused, setSignOutFocused] = useState(false)
 
   const handleSignOut = useCallback(() => {
     logout()
@@ -93,7 +122,7 @@ const LibraryScreen: React.FC = () => {
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── Header ──────────────────────────────── */}
+      {/* ── Header ── */}
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Your Library</Text>
         <Text style={styles.headerSubtitle}>
@@ -101,7 +130,7 @@ const LibraryScreen: React.FC = () => {
         </Text>
       </View>
 
-      {/* ── Profile Card ────────────────────────── */}
+      {/* ── Profile Card ── */}
       <View style={styles.profileCard}>
         <View style={styles.profileRow}>
           <AvatarCircle />
@@ -116,7 +145,6 @@ const LibraryScreen: React.FC = () => {
           </View>
         </View>
 
-        {/* Connected Account Info */}
         <View style={styles.connectedSection}>
           <View style={styles.connectedRow}>
             <Text style={styles.connectedLabel}>Connected via API</Text>
@@ -128,41 +156,32 @@ const LibraryScreen: React.FC = () => {
         </View>
       </View>
 
-      {/* ── Library Sections ──────────────────────── */}
+      {/* ── Library Sections ── */}
       <View style={styles.sectionsContainer}>
         <Text style={styles.sectionGroupTitle}>Your Library</Text>
-
         {PLACEHOLDER_SECTIONS.map((section) => (
-          <View key={section.id} style={styles.placeholderCard}>
-            <View style={styles.placeholderRow}>
-              <View style={styles.placeholderIconContainer}>
-                <Text style={styles.placeholderIcon}>{section.icon}</Text>
-              </View>
-              <View style={styles.placeholderInfo}>
-                <Text style={styles.placeholderTitle}>{section.title}</Text>
-                <Text style={styles.placeholderDescription}>
-                  {section.description}
-                </Text>
-              </View>
-              <View style={styles.placeholderCountContainer}>
-                <Text style={styles.placeholderCount}>{section.count}</Text>
-                <Text style={styles.placeholderCountLabel}>items</Text>
-              </View>
-            </View>
-            <View style={styles.comingSoonBadge}>
-              <Text style={styles.comingSoonText}>Coming soon</Text>
-            </View>
-          </View>
+          <PlaceholderCard key={section.id} section={section} />
         ))}
       </View>
 
-      {/* ── Sign Out ────────────────────────────── */}
+      {/* ── Sign Out ── */}
       <View style={styles.signOutSection}>
         <TouchableOpacity
-          style={styles.signOutButton}
+          style={[
+            styles.signOutButton,
+            signOutFocused && styles.signOutFocused,
+          ]}
           onPress={handleSignOut}
+          onFocus={() => setSignOutFocused(true)}
+          onBlur={() => setSignOutFocused(false)}
           activeOpacity={0.7}
-          {...(Platform.OS === 'android' ? { hasTVPreferredFocus: false } : {})}
+          tvParallaxProperties={{
+            enabled: true,
+            shiftDistanceX: 3,
+            shiftDistanceY: 3,
+            tiltAngle: 5,
+            magnification: 1.05,
+          }}
         >
           <Text style={styles.signOutIcon}>🚪</Text>
           <Text style={styles.signOutText}>Sign Out</Text>
@@ -172,13 +191,10 @@ const LibraryScreen: React.FC = () => {
         </Text>
       </View>
 
-      {/* Bottom spacing for safe area */}
       <View style={styles.bottomSpacer} />
     </ScrollView>
   )
 }
-
-// ── Styles ─────────────────────────────────────
 
 const styles = StyleSheet.create({
   screen: {
@@ -186,36 +202,37 @@ const styles = StyleSheet.create({
     backgroundColor: '#030712',
   },
   scrollContent: {
-    paddingTop: 32,
-    paddingBottom: 32,
-    paddingHorizontal: 24,
+    paddingTop: 48,
+    paddingBottom: 48,
+    paddingLeft: 48,
+    paddingRight: 48,
   },
 
-  // ── Header ──────────────────────────────────────
+  // ── Header ──
   header: {
-    marginBottom: 28,
+    marginBottom: 32,
   },
   headerTitle: {
-    fontSize: 32,
+    fontSize: 34,
     fontWeight: '800',
-    color: '#f9fafb',
+    color: '#f8fafc',
     letterSpacing: 0.5,
   },
   headerSubtitle: {
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: '500',
-    color: '#9ca3af',
+    color: '#94a3b8',
     marginTop: 6,
   },
 
-  // ── Profile Card ────────────────────────────────
+  // ── Profile Card ──
   profileCard: {
-    backgroundColor: '#111827',
+    backgroundColor: '#0f172a',
     borderRadius: 16,
     borderWidth: 1,
-    borderColor: '#1f2937',
-    padding: 24,
-    marginBottom: 28,
+    borderColor: '#1e293b',
+    padding: 28,
+    marginBottom: 32,
   },
   profileRow: {
     flexDirection: 'row',
@@ -223,53 +240,53 @@ const styles = StyleSheet.create({
   },
   profileInfo: {
     flex: 1,
-    marginLeft: 18,
+    marginLeft: 20,
   },
   profileName: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: '700',
-    color: '#f9fafb',
-    marginBottom: 8,
+    color: '#f8fafc',
+    marginBottom: 10,
   },
   badgeRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 10,
+    gap: 12,
   },
   subscriptionBadge: {
     backgroundColor: 'rgba(59, 130, 246, 0.15)',
     borderWidth: 1,
     borderColor: 'rgba(59, 130, 246, 0.4)',
     borderRadius: 6,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
   },
   subscriptionBadgeText: {
-    fontSize: 13,
+    fontSize: 14,
     fontWeight: '700',
     color: '#3b82f6',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   subscriptionLabel: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '500',
-    color: '#9ca3af',
+    color: '#94a3b8',
   },
 
-  // ── Avatar ─────────────────────────────────────
+  // ── Avatar ──
   avatarOuter: {
-    width: 72,
-    height: 72,
-    borderRadius: 36,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(59, 130, 246, 0.2)',
   },
   avatarRing: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'rgba(59, 130, 246, 0.3)',
@@ -277,121 +294,122 @@ const styles = StyleSheet.create({
     borderColor: '#3b82f6',
   },
   avatarInner: {
-    width: 52,
-    height: 52,
-    borderRadius: 26,
+    width: 58,
+    height: 58,
+    borderRadius: 29,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: '#3b82f6',
   },
   avatarLetter: {
-    fontSize: 26,
+    fontSize: 28,
     fontWeight: '800',
     color: '#ffffff',
   },
 
-  // ── Connected Account ──────────────────────────
+  // ── Connected Account ──
   connectedSection: {
-    marginTop: 20,
-    paddingTop: 18,
+    marginTop: 24,
+    paddingTop: 20,
     borderTopWidth: 1,
-    borderTopColor: '#1f2937',
+    borderTopColor: '#1e293b',
   },
   connectedRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 8,
+    marginBottom: 10,
   },
   connectedLabel: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '600',
-    color: '#9ca3af',
+    color: '#94a3b8',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
   connectedStatus: {
-    fontSize: 16,
+    fontSize: 18,
     color: '#22c55e',
     fontWeight: '700',
   },
   connectedToken: {
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '500',
-    color: '#6b7280',
-    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+    color: '#64748b',
+    fontFamily: 'monospace',
     letterSpacing: 0.5,
   },
 
-  // ── Library Sections ────────────────────────────
+  // ── Library Sections ──
   sectionsContainer: {
-    marginBottom: 28,
+    marginBottom: 32,
   },
   sectionGroupTitle: {
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '700',
-    color: '#f9fafb',
-    marginBottom: 14,
+    color: '#f8fafc',
+    marginBottom: 18,
     letterSpacing: 0.3,
   },
-
   placeholderCard: {
-    backgroundColor: '#111827',
+    backgroundColor: '#0f172a',
     borderRadius: 14,
-    borderWidth: 1,
-    borderColor: '#1f2937',
-    padding: 18,
-    marginBottom: 12,
-    opacity: 0.7,
+    borderWidth: 2,
+    borderColor: '#1e293b',
+    padding: 22,
+    marginBottom: 14,
+  },
+  placeholderCardFocused: {
+    borderColor: '#60a5fa',
   },
   placeholderRow: {
     flexDirection: 'row',
     alignItems: 'center',
   },
   placeholderIconContainer: {
-    width: 48,
-    height: 48,
-    borderRadius: 12,
+    width: 56,
+    height: 56,
+    borderRadius: 14,
     backgroundColor: 'rgba(59, 130, 246, 0.1)',
     justifyContent: 'center',
     alignItems: 'center',
-    marginRight: 14,
+    marginRight: 18,
   },
   placeholderIcon: {
-    fontSize: 22,
+    fontSize: 26,
   },
   placeholderInfo: {
     flex: 1,
-    marginRight: 12,
+    marginRight: 14,
   },
   placeholderTitle: {
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: '700',
-    color: '#f9fafb',
+    color: '#f8fafc',
     marginBottom: 4,
   },
   placeholderDescription: {
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: '500',
-    color: '#9ca3af',
-    lineHeight: 18,
+    color: '#94a3b8',
+    lineHeight: 22,
   },
   placeholderCountContainer: {
     alignItems: 'center',
-    minWidth: 52,
+    minWidth: 60,
   },
   placeholderCount: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: '800',
-    color: '#6b7280',
+    color: '#64748b',
   },
   placeholderCountLabel: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '500',
-    color: '#6b7280',
+    color: '#64748b',
     textTransform: 'uppercase',
     letterSpacing: 0.3,
-    marginTop: 1,
+    marginTop: 2,
   },
   comingSoonBadge: {
     alignSelf: 'flex-start',
@@ -399,58 +417,62 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#374151',
     borderRadius: 4,
-    paddingHorizontal: 8,
-    paddingVertical: 2,
-    marginTop: 12,
+    paddingHorizontal: 10,
+    paddingVertical: 3,
+    marginTop: 14,
   },
   comingSoonText: {
-    fontSize: 11,
+    fontSize: 13,
     fontWeight: '600',
-    color: '#6b7280',
+    color: '#64748b',
     textTransform: 'uppercase',
     letterSpacing: 0.5,
   },
 
-  // ── Sign Out ────────────────────────────────────
+  // ── Sign Out ──
   signOutSection: {
     alignItems: 'center',
-    paddingTop: 8,
+    paddingTop: 12,
   },
   signOutButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: 'rgba(239, 68, 68, 0.12)',
-    borderWidth: 1,
+    borderWidth: 2,
     borderColor: 'rgba(239, 68, 68, 0.35)',
-    borderRadius: 12,
-    paddingHorizontal: 32,
-    paddingVertical: 16,
-    minHeight: 56,
-    gap: 10,
+    borderRadius: 14,
+    paddingHorizontal: 40,
+    paddingVertical: 18,
+    minHeight: 64,
+    gap: 12,
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 460,
+  },
+  signOutFocused: {
+    borderColor: '#ef4444',
+    backgroundColor: 'rgba(239, 68, 68, 0.2)',
   },
   signOutIcon: {
-    fontSize: 20,
+    fontSize: 24,
   },
   signOutText: {
-    fontSize: 17,
+    fontSize: 20,
     fontWeight: '700',
     color: '#ef4444',
     letterSpacing: 0.5,
   },
   signOutHint: {
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: '500',
-    color: '#6b7280',
+    color: '#64748b',
     textAlign: 'center',
-    marginTop: 10,
-    lineHeight: 18,
-    maxWidth: 320,
+    marginTop: 12,
+    lineHeight: 22,
+    maxWidth: 380,
   },
 
-  // ── Utility ─────────────────────────────────────
+  // ── Utility ──
   bottomSpacer: {
     height: 48,
   },

@@ -1,3 +1,6 @@
+// ── Nebula TV — Home Screen (TV-Optimized) ────
+// Overscan-safe (48dp), larger fonts, consistent TV layout.
+
 import React, { useEffect, useState, useCallback } from 'react'
 import {
   View,
@@ -14,11 +17,7 @@ import type { NebulaVideo } from '../types'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import type { RootStackParamList } from '../../App'
 
-// ── Constants ─────────────────────────────────────
-
 const TRENDING_COUNT = 10
-
-// ── Helpers ────────────────────────────────────────
 
 function isNebulaOriginal(video: NebulaVideo): boolean {
   return (
@@ -27,8 +26,6 @@ function isNebulaOriginal(video: NebulaVideo): boolean {
   )
 }
 
-// ── Component ──────────────────────────────────────
-
 const HomeScreen: React.FC = () => {
   const navigation =
     useNavigation<NativeStackNavigationProp<RootStackParamList>>()
@@ -36,8 +33,6 @@ const HomeScreen: React.FC = () => {
   const [videos, setVideos] = useState<NebulaVideo[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-
-  // ── Data Fetching ──────────────────────────────────
 
   const loadVideos = useCallback(async () => {
     setLoading(true)
@@ -60,8 +55,6 @@ const HomeScreen: React.FC = () => {
     loadVideos()
   }, [loadVideos])
 
-  // ── Derived Data ───────────────────────────────────
-
   const featuredVideos = useCallback(
     () => videos.filter((v) => isNebulaOriginal(v)),
     [videos],
@@ -74,16 +67,12 @@ const HomeScreen: React.FC = () => {
 
   const allVideos = useCallback(() => videos, [videos])
 
-  // ── Handlers ───────────────────────────────────────
-
   const handleVideoPress = useCallback(
     (video: NebulaVideo) => {
       navigation.navigate('Video', { slug: video.slug })
     },
     [navigation],
   )
-
-  // ── Render: Loading ────────────────────────────────
 
   if (loading) {
     return (
@@ -93,8 +82,6 @@ const HomeScreen: React.FC = () => {
     )
   }
 
-  // ── Render: Error ──────────────────────────────────
-
   if (error) {
     return (
       <View style={styles.screen}>
@@ -102,8 +89,6 @@ const HomeScreen: React.FC = () => {
       </View>
     )
   }
-
-  // ── Render: Empty ──────────────────────────────────
 
   if (videos.length === 0) {
     return (
@@ -120,18 +105,16 @@ const HomeScreen: React.FC = () => {
     )
   }
 
-  // ── Render: Content ────────────────────────────────
-
   return (
     <ScrollView
       style={styles.screen}
       contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={false}
     >
-      {/* ── Branding Header ────────────────────────────── */}
+      {/* ── Branding Header ── */}
       <View style={styles.header}>
         <View style={styles.brandRow}>
-          <Text style={styles.brandIcon}>🔮</Text>
+          <Text style={styles.brandIcon}>✦</Text>
           <View>
             <Text style={styles.brandTitle}>Nebula TV</Text>
             <Text style={styles.brandSubtitle}>
@@ -141,7 +124,6 @@ const HomeScreen: React.FC = () => {
         </View>
       </View>
 
-      {/* ── Featured Section ───────────────────────────── */}
       {featuredVideos().length > 0 && (
         <ContentRow
           title="Featured"
@@ -150,7 +132,6 @@ const HomeScreen: React.FC = () => {
         />
       )}
 
-      {/* ── Trending Section ───────────────────────────── */}
       {trendingVideos().length > 0 && (
         <ContentRow
           title="Trending"
@@ -159,7 +140,6 @@ const HomeScreen: React.FC = () => {
         />
       )}
 
-      {/* ── All Videos Section ─────────────────────────── */}
       {allVideos().length > 0 && (
         <ContentRow
           title="All Videos"
@@ -168,13 +148,11 @@ const HomeScreen: React.FC = () => {
         />
       )}
 
-      {/* Bottom spacing for safe area */}
+      {/* Overscan-safe bottom spacing */}
       <View style={styles.bottomSpacer} />
     </ScrollView>
   )
 }
-
-// ── Styles ─────────────────────────────────────────
 
 const styles = StyleSheet.create({
   screen: {
@@ -182,64 +160,66 @@ const styles = StyleSheet.create({
     backgroundColor: '#030712',
   },
   scrollContent: {
-    paddingTop: 24,
-    paddingBottom: 32,
+    paddingTop: 48,   // overscan-safe
+    paddingBottom: 48,
+    paddingLeft: 48,  // overscan-safe
+    paddingRight: 48,
   },
 
-  // ── Header / Branding ───────────────────────────────
+  // ── Header / Branding ──
   header: {
-    paddingHorizontal: 20,
-    marginBottom: 28,
+    marginBottom: 36,
   },
   brandRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 16,
   },
   brandIcon: {
-    fontSize: 40,
+    fontSize: 42,
+    color: '#3b82f6',
   },
   brandTitle: {
-    fontSize: 28,
+    fontSize: 34,
     fontWeight: '800',
-    color: '#f9fafb',
+    color: '#f8fafc',
     letterSpacing: 0.5,
   },
   brandSubtitle: {
-    fontSize: 14,
+    fontSize: 18,
     fontWeight: '500',
-    color: '#9ca3af',
-    marginTop: 2,
+    color: '#94a3b8',
+    marginTop: 3,
   },
 
-  // ── Empty State ─────────────────────────────────────
+  // ── Empty State ──
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 32,
-    gap: 12,
+    paddingHorizontal: 48,
+    gap: 16,
   },
   emptyIcon: {
-    fontSize: 64,
-    marginBottom: 8,
+    fontSize: 72,
+    marginBottom: 12,
   },
   emptyTitle: {
-    fontSize: 22,
+    fontSize: 28,
     fontWeight: '700',
-    color: '#f9fafb',
+    color: '#f8fafc',
     textAlign: 'center',
   },
   emptyMessage: {
-    fontSize: 15,
+    fontSize: 18,
     fontWeight: '500',
-    color: '#9ca3af',
+    color: '#94a3b8',
     textAlign: 'center',
-    lineHeight: 22,
-    maxWidth: 360,
+    lineHeight: 26,
+    maxWidth: 480,
   },
 
-  // ── Utility ─────────────────────────────────────────
+  // ── Utility ──
   bottomSpacer: {
     height: 48,
   },
