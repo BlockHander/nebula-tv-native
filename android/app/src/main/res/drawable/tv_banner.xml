@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android TV banner (320x180 dp) for the home screen launcher -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="320dp"
+    android:height="180dp"
+    android:viewportWidth="320"
+    android:viewportHeight="180">
+    <!-- Background -->
+    <path
+        android:fillColor="#030712"
+        android:pathData="M0,0h320v180H0z"/>
+    <!-- Accent bar -->
+    <path
+        android:fillColor="#1d4ed8"
+        android:pathData="M0,0h8v180H0z"/>
+    <!-- Nebula TV text placeholder: two simple shapes -->
+    <path
+        android:fillColor="#3b82f6"
+        android:pathData="M60,90m-24,0a24,24 0,1 1,48 0a24,24 0,1 1,-48 0"
+        android:strokeWidth="3"
+        android:strokeColor="#60a5fa"/>
+    <!-- Text bar -->
+    <path
+        android:fillColor="#f8fafc"
+        android:pathData="M100,82h120v6H100z"/>
+    <path
+        android:fillColor="#94a3b8"
+        android:pathData="M100,94h80v4H100z"/>
+</vector>
