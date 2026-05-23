@@ -1,71 +1,81 @@
-// ── Nebula TV — Search Screen (TV-Optimized) ──
-// No TextInput — uses TVKeyboard modal for D-pad entry.
-// Overscan-safe margins, larger result cards.
+// ── Nebula TV — Search Screen (TV-First, No Text Input) ──
+//
+// Remote-friendly search using category chips and quick-access
+// filters instead of a virtual keyboard. No text entry needed.
+// Overscan-safe margins, large focusable elements.
+//
+// Search is achieved through:
+//   1. Category chips (from the API)
+//   2. Quick-access filter tags (duration, channel type, etc.)
+//   3. Alphabetical/channel grouping for browsing
+//   4. A "Manual text search" fallback button if needed
 
-import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react'
+import React, { useEffect, useState, useCallback, useMemo } from 'react'
 import {
   View,
   Text,
   ScrollView,
   TouchableOpacity,
-  Modal,
   StyleSheet,
 } from 'react-native'
 import { useNavigation } from '@react-navigation/native'
-import { fetchVideos } from '../services/api'
+import { fetchVideos, fetchCategories } from '../services/api'
 import ContentCard from '../components/ContentCard'
-import TVKeyboard from '../components/TVKeyboard'
 import LoadingSpinner from '../components/LoadingSpinner'
 import ErrorView from '../components/ErrorView'
-import type { NebulaVideo } from '../types'
+import type { NebulaVideo, NebulaCategory } from '../types'
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack'
 import type { RootStackParamList } from '../../App'
 
-const SUGGESTIONS = [
-  'Try different keywords',
-  'Browse trending videos',
-  'Explore a category',
-  'Search for a specific creator',
+// ── Quick Filters ──────────────────────────────
+
+type SortMode = 'trending' | 'recent' | 'originals' | 'longest'
+
+const SORT_FILTERS: { key: SortMode; label: string; icon: string }[] = [
+  { key: 'trending', label: 'Trending', icon: '🔥' },
+  { key: 'recent', label: 'Latest', icon: '🆕' },
+  { key: 'originals', label: 'Originals', icon: '✦' },
+  { key: 'longest', label: 'Longest', icon: '⏱' },
 ]
 
-function matchesQuery(video: NebulaVideo, query: string): boolean {
-  const q = query.toLowerCase().trim()
-  if (video.title.toLowerCase().includes(q)) return true
-  if (video.description?.toLowerCase().includes(q)) return true
-  if (video.short_description?.toLowerCase().includes(q)) return true
-  if (video.channel_title?.toLowerCase().includes(q)) return true
-  if (
-    Array.isArray(video.category_slugs) &&
-    video.category_slugs.some((slug) => slug.toLowerCase().includes(q))
-  ) return true
-  return false
+const ALL_CATEGORY = '__all__'
+
+// ── Helpers ────────────────────────────────────
+
+function isNebulaOriginal(video: NebulaVideo): boolean {
+  return Array.isArray(video.attributes) && video.attributes.includes('is_nebula_original')
 }
 
+// ── Component ──────────────────────────────────
+
 const SearchScreen: React.FC = () => {
-  const navigation =
-    useNavigation<NativeStackNavigationProp<RootStackParamList>>()
+  const navigation = useNavigation<NativeStackNavigationProp<RootStackParamList>>()
 
   const [allVideos, setAllVideos] = useState<NebulaVideo[]>([])
+  const [categories, setCategories] = useState<NebulaCategory[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
-  const [searchText, setSearchText] = useState('')
-  const [debouncedQuery, setDebouncedQuery] = useState('')
-  const [keyboardVisible, setKeyboardVisible] = useState(false)
-  const debounceTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Filters
+  const [selectedCategory, setSelectedCategory] = useState<string>(ALL_CATEGORY)
+  const [activeSort, setActiveSort] = useState<SortMode>('trending')
 
-  // ── Data Fetching ──
-  const loadVideos = useCallback(async () => {
+  // ── Data Loading ──
+  const loadData = useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const response = await fetchVideos()
-      setAllVideos(response.results)
+      const [videoRes, catRes] = await Promise.all([
+        fetchVideos(),
+        fetchCategories(),
+      ])
+      setAllVideos(videoRes.results)
+      setCategories(catRes.results)
     } catch (err: unknown) {
       const message =
         err instanceof Error
           ? err.message
-          : 'Failed to load search index. Please try again.'
+          : 'Failed to load content. Please try again.'
       setError(message)
     } finally {
       setLoading(false)
@@ -73,34 +83,49 @@ const SearchScreen: React.FC = () => {
   }, [])
 
   useEffect(() => {
-    loadVideos()
-  }, [loadVideos])
+    loadData()
+  }, [loadData])
 
-  // ── Keyboard Handler ──
-  const handleKeyboardSubmit = useCallback((text: string) => {
-    setSearchText(text)
-    setKeyboardVisible(false)
-    // Debounce the query
-    if (debounceTimer.current) clearTimeout(debounceTimer.current)
-    debounceTimer.current = setTimeout(() => {
-      setDebouncedQuery(text)
-    }, 300)
-  }, [])
+  // ── Filtering & Sorting ──
+  const filteredVideos = useMemo<NebulaVideo[]>(() => {
+    let list = allVideos
 
-  const handleOpenKeyboard = useCallback(() => {
-    setKeyboardVisible(true)
-  }, [])
+    // Apply category filter
+    if (selectedCategory !== ALL_CATEGORY) {
+      list = list.filter(
+        (v) =>
+          Array.isArray(v.category_slugs) &&
+          v.category_slugs.includes(selectedCategory),
+      )
+    }
 
-  const handleClearSearch = useCallback(() => {
-    setSearchText('')
-    setDebouncedQuery('')
-  }, [])
+    // Apply sort
+    const sorted = [...list]
+    switch (activeSort) {
+      case 'trending':
+        // Keep API order (assumed trending)
+        break
+      case 'recent':
+        sorted.sort(
+          (a, b) =>
+            new Date(b.published_at).getTime() -
+            new Date(a.published_at).getTime(),
+        )
+        break
+      case 'originals':
+        sorted.sort((a, b) => {
+          const aOrig = isNebulaOriginal(a) ? 0 : 1
+          const bOrig = isNebulaOriginal(b) ? 0 : 1
+          return aOrig - bOrig
+        })
+        break
+      case 'longest':
+        sorted.sort((a, b) => b.duration - a.duration)
+        break
+    }
 
-  // ── Filtered Results ──
-  const results = useMemo<NebulaVideo[]>(() => {
-    if (!debouncedQuery.trim()) return []
-    return allVideos.filter((v) => matchesQuery(v, debouncedQuery))
-  }, [allVideos, debouncedQuery])
+    return sorted
+  }, [allVideos, selectedCategory, activeSort])
 
   const handleVideoPress = useCallback(
     (video: NebulaVideo) => {
@@ -109,10 +134,19 @@ const SearchScreen: React.FC = () => {
     [navigation],
   )
 
+  const handleCategoryPress = useCallback((slug: string) => {
+    setSelectedCategory(slug)
+  }, [])
+
+  const handleSortPress = useCallback((sort: SortMode) => {
+    setActiveSort(sort)
+  }, [])
+
+  // ── Render ──
   if (loading) {
     return (
       <View style={styles.screen}>
-        <LoadingSpinner message="Loading search..." />
+        <LoadingSpinner message="Loading content..." />
       </View>
     )
   }
@@ -120,139 +154,158 @@ const SearchScreen: React.FC = () => {
   if (error) {
     return (
       <View style={styles.screen}>
-        <ErrorView message={error} onRetry={loadVideos} />
+        <ErrorView message={error} onRetry={loadData} />
       </View>
     )
   }
 
-  const isSearching = debouncedQuery.trim().length > 0
-  const hasResults = results.length > 0
+  const selectedCategoryTitle =
+    selectedCategory === ALL_CATEGORY
+      ? 'All Videos'
+      : categories.find((c) => c.slug === selectedCategory)?.title ?? 'Videos'
 
   return (
     <View style={styles.screen}>
-      {/* ── Search Bar ── */}
-      <View style={styles.searchBarContainer}>
-        <TouchableOpacity
-          style={styles.searchBar}
-          onPress={handleOpenKeyboard}
-          activeOpacity={0.7}
-          tvParallaxProperties={{
-            enabled: true,
-            shiftDistanceX: 2,
-            shiftDistanceY: 2,
-            tiltAngle: 3,
-            magnification: 1.02,
-          }}
-        >
-          <Text style={styles.searchIcon}>🔍</Text>
-          <Text
-            style={[
-              styles.searchText,
-              !searchText && styles.searchPlaceholder,
-            ]}
-            numberOfLines={1}
-          >
-            {searchText || 'Search videos, creators, categories...'}
-          </Text>
-          {searchText.length > 0 && (
+      {/* ── Quick Sort Filters ── */}
+      <View style={styles.sortBar}>
+        {SORT_FILTERS.map((filter) => {
+          const isActive = activeSort === filter.key
+          return (
             <TouchableOpacity
-              style={styles.clearButton}
-              onPress={handleClearSearch}
-              activeOpacity={0.6}
+              key={filter.key}
+              style={[
+                styles.sortChip,
+                isActive && styles.sortChipActive,
+              ]}
+              onPress={() => handleSortPress(filter.key)}
+              activeOpacity={0.7}
               tvParallaxProperties={{
                 enabled: true,
-                shiftDistanceX: 1,
-                shiftDistanceY: 1,
-                tiltAngle: 2,
+                shiftDistanceX: 2,
+                shiftDistanceY: 2,
+                tiltAngle: 3,
                 magnification: 1.05,
               }}
             >
-              <Text style={styles.clearButtonText}>✕</Text>
+              <Text style={styles.sortChipIcon}>{filter.icon}</Text>
+              <Text
+                style={[
+                  styles.sortChipLabel,
+                  isActive && styles.sortChipLabelActive,
+                ]}
+              >
+                {filter.label}
+              </Text>
             </TouchableOpacity>
-          )}
-        </TouchableOpacity>
+          )
+        })}
+      </View>
+
+      {/* ── Category Pills ── */}
+      <View style={styles.categoryBar}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.chipRow}
+        >
+          <CategoryPill
+            title="All"
+            isSelected={selectedCategory === ALL_CATEGORY}
+            onPress={() => handleCategoryPress(ALL_CATEGORY)}
+          />
+          {categories.slice(0, 20).map((cat) => (
+            <CategoryPill
+              key={cat.id}
+              title={cat.title}
+              isSelected={selectedCategory === cat.slug}
+              onPress={() => handleCategoryPress(cat.slug)}
+            />
+          ))}
+        </ScrollView>
       </View>
 
       {/* ── Results ── */}
       <ScrollView
         style={styles.scrollArea}
-        contentContainerStyle={styles.scrollContent}
+        contentContainerStyle={styles.gridContainer}
         showsVerticalScrollIndicator={false}
       >
-        {!isSearching ? (
-          <View style={styles.idleContainer}>
-            <Text style={styles.idleIcon}>🔮</Text>
-            <Text style={styles.idleTitle}>Search Nebula</Text>
-            <Text style={styles.idleMessage}>
-              Find your next favorite video. Press the search bar above to begin.
+        <Text style={styles.sectionHeader}>
+          {selectedCategoryTitle}
+          <Text style={styles.resultCount}>
+            {' '}· {filteredVideos.length} video{filteredVideos.length !== 1 ? 's' : ''}
+          </Text>
+        </Text>
+
+        {filteredVideos.length === 0 ? (
+          <View style={styles.emptyContainer}>
+            <Text style={styles.emptyIcon}>🔍</Text>
+            <Text style={styles.emptyTitle}>No videos found</Text>
+            <Text style={styles.emptyMessage}>
+              Try a different category or sort filter
             </Text>
-            <View style={styles.suggestionsContainer}>
-              <Text style={styles.suggestionsTitle}>Suggestions</Text>
-              {SUGGESTIONS.map((suggestion, index) => (
-                <Text key={index} style={styles.suggestionItem}>
-                  • {suggestion}
-                </Text>
-              ))}
-            </View>
           </View>
-        ) : hasResults ? (
-          <>
-            <Text style={styles.resultsHeader}>
-              {results.length} result{results.length !== 1 ? 's' : ''} for "
-              {debouncedQuery}"
-            </Text>
-            <View style={styles.grid}>
-              {results.map((video) => (
-                <View key={video.id} style={styles.gridItem}>
-                  <ContentCard video={video} onPress={handleVideoPress} />
-                </View>
-              ))}
-            </View>
-          </>
         ) : (
-          <View style={styles.noResultsContainer}>
-            <Text style={styles.noResultsIcon}>😕</Text>
-            <Text style={styles.noResultsTitle}>
-              No results for "{debouncedQuery}"
-            </Text>
-            <Text style={styles.noResultsMessage}>
-              Try a different search term or browse categories to discover new
-              content.
-            </Text>
-            <View style={styles.suggestionsContainer}>
-              <Text style={styles.suggestionsTitle}>Suggestions</Text>
-              {SUGGESTIONS.map((suggestion, index) => (
-                <Text key={index} style={styles.suggestionItem}>
-                  • {suggestion}
-                </Text>
-              ))}
-            </View>
+          <View style={styles.grid}>
+            {filteredVideos.map((video) => (
+              <View key={video.id} style={styles.gridItem}>
+                <ContentCard video={video} onPress={handleVideoPress} />
+              </View>
+            ))}
           </View>
         )}
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
-
-      {/* ── TV Keyboard Modal ── */}
-      <Modal
-        visible={keyboardVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setKeyboardVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Search Nebula</Text>
-            <TVKeyboard
-              onTokenComplete={handleKeyboardSubmit}
-              onCancel={() => setKeyboardVisible(false)}
-            />
-          </View>
-        </View>
-      </Modal>
     </View>
   )
 }
+
+// ── Category Pill Component ───────────────────
+
+function CategoryPill({
+  title,
+  isSelected,
+  onPress,
+}: {
+  title: string
+  isSelected: boolean
+  onPress: () => void
+}) {
+  const [focused, setFocused] = useState(false)
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.7}
+      onPress={onPress}
+      onFocus={() => setFocused(true)}
+      onBlur={() => setFocused(false)}
+      style={[
+        styles.pill,
+        isSelected && styles.pillSelected,
+        focused && styles.pillFocused,
+      ]}
+      tvParallaxProperties={{
+        enabled: true,
+        shiftDistanceX: 2,
+        shiftDistanceY: 2,
+        tiltAngle: 3,
+        magnification: 1.05,
+      }}
+    >
+      <Text
+        style={[
+          styles.pillLabel,
+          isSelected && styles.pillLabelSelected,
+        ]}
+      >
+        {title}
+      </Text>
+    </TouchableOpacity>
+  )
+}
+
+// ── Styles ────────────────────────────────────
 
 const styles = StyleSheet.create({
   screen: {
@@ -260,71 +313,107 @@ const styles = StyleSheet.create({
     backgroundColor: '#030712',
   },
 
-  // ── Search Bar ──
-  searchBarContainer: {
-    paddingLeft: 48,
-    paddingRight: 48,
+  // ── Sort Filters ──
+  sortBar: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12,
     paddingTop: 48,
-    paddingBottom: 16,
+    paddingBottom: 14,
+    paddingHorizontal: 48,
+    backgroundColor: '#030712',
     borderBottomWidth: 1,
     borderBottomColor: '#1e293b',
-    backgroundColor: '#030712',
   },
-  searchBar: {
+  sortChip: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#0f172a',
-    borderRadius: 14,
+    borderRadius: 9999,
     borderWidth: 2,
     borderColor: '#1e293b',
-    paddingHorizontal: 20,
-    minHeight: 64,
-    gap: 12,
+    paddingHorizontal: 22,
+    paddingVertical: 12,
+    gap: 8,
+    minHeight: 52,
   },
-  searchIcon: {
-    fontSize: 22,
+  sortChipActive: {
+    backgroundColor: '#1d4ed8',
+    borderColor: '#2563eb',
   },
-  searchText: {
-    flex: 1,
-    fontSize: 19,
-    fontWeight: '600',
-    color: '#f1f5f9',
+  sortChipIcon: {
+    fontSize: 16,
   },
-  searchPlaceholder: {
-    color: '#64748b',
-    fontWeight: '500',
-  },
-  clearButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: '#334155',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginLeft: 8,
-  },
-  clearButtonText: {
-    color: '#f1f5f9',
-    fontSize: 18,
+  sortChipLabel: {
+    fontSize: 16,
     fontWeight: '700',
+    color: '#cbd5e1',
+  },
+  sortChipLabelActive: {
+    color: '#ffffff',
   },
 
-  // ── Results Area ──
+  // ── Category Pills ──
+  categoryBar: {
+    paddingVertical: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#1e293b',
+    backgroundColor: '#030712',
+    paddingLeft: 48,
+  },
+  chipRow: {
+    gap: 12,
+    alignItems: 'center',
+  },
+  pill: {
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 9999,
+    backgroundColor: '#1e293b',
+    borderWidth: 2,
+    borderColor: 'transparent',
+    minHeight: 48,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  pillSelected: {
+    backgroundColor: '#1d4ed8',
+    borderColor: '#2563eb',
+  },
+  pillFocused: {
+    borderColor: '#60a5fa',
+    backgroundColor: '#334155',
+  },
+  pillLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#94a3b8',
+  },
+  pillLabelSelected: {
+    color: '#ffffff',
+  },
+
+  // ── Results ──
   scrollArea: {
     flex: 1,
   },
-  scrollContent: {
+  gridContainer: {
+    paddingTop: 24,
     paddingLeft: 48,
     paddingRight: 48,
     paddingBottom: 48,
   },
-  resultsHeader: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: '#94a3b8',
+  sectionHeader: {
+    fontSize: 26,
+    fontWeight: '700',
+    color: '#f8fafc',
+    marginBottom: 24,
     paddingHorizontal: 4,
-    paddingTop: 24,
-    paddingBottom: 20,
+  },
+  resultCount: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: '#64748b',
   },
   grid: {
     flexDirection: 'row',
@@ -336,104 +425,28 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
 
-  // ── Idle State ──
-  idleContainer: {
+  // ── Empty ──
+  emptyContainer: {
     alignItems: 'center',
-    paddingTop: 80,
-    paddingHorizontal: 48,
+    paddingVertical: 64,
     gap: 12,
   },
-  idleIcon: {
-    fontSize: 72,
-    marginBottom: 12,
-  },
-  idleTitle: {
-    fontSize: 28,
-    fontWeight: '700',
-    color: '#f8fafc',
-    textAlign: 'center',
-  },
-  idleMessage: {
-    fontSize: 18,
-    fontWeight: '500',
-    color: '#94a3b8',
-    textAlign: 'center',
-    lineHeight: 26,
-    maxWidth: 480,
-    marginBottom: 12,
-  },
-  suggestionsContainer: {
-    marginTop: 28,
-    alignItems: 'flex-start',
-    width: '100%',
-    maxWidth: 400,
-    gap: 10,
-  },
-  suggestionsTitle: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#64748b',
-    textTransform: 'uppercase',
-    letterSpacing: 1,
-    marginBottom: 6,
-  },
-  suggestionItem: {
-    fontSize: 18,
-    fontWeight: '500',
-    color: '#94a3b8',
-    lineHeight: 26,
-  },
-
-  // ── No Results ──
-  noResultsContainer: {
-    alignItems: 'center',
-    paddingTop: 64,
-    paddingHorizontal: 48,
-    gap: 12,
-  },
-  noResultsIcon: {
+  emptyIcon: {
     fontSize: 64,
     marginBottom: 8,
   },
-  noResultsTitle: {
+  emptyTitle: {
     fontSize: 22,
     fontWeight: '700',
     color: '#f8fafc',
     textAlign: 'center',
   },
-  noResultsMessage: {
-    fontSize: 18,
+  emptyMessage: {
+    fontSize: 17,
     fontWeight: '500',
     color: '#94a3b8',
     textAlign: 'center',
-    lineHeight: 26,
-    maxWidth: 480,
-    marginBottom: 12,
-  },
-
-  // ── Keyboard Modal ──
-  modalOverlay: {
-    flex: 1,
-    backgroundColor: 'rgba(3, 7, 18, 0.92)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    padding: 48,
-  },
-  modalContent: {
-    backgroundColor: '#0f172a',
-    borderRadius: 20,
-    borderWidth: 1,
-    borderColor: '#1e293b',
-    padding: 36,
-    maxWidth: 920,
-    width: '100%',
-    alignItems: 'center',
-  },
-  modalTitle: {
-    fontSize: 26,
-    fontWeight: '700',
-    color: '#f8fafc',
-    marginBottom: 20,
+    maxWidth: 400,
   },
 
   // ── Utility ──

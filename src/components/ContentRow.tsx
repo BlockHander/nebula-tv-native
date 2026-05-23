@@ -19,6 +19,7 @@ interface ContentRowProps {
   videos: NebulaVideo[]
   onVideoPress?: (video: NebulaVideo) => void
   style?: Record<string, unknown>
+  hasTVPreferredFocus?: boolean
 }
 
 // ── Constants ─────────────────────────────────────
@@ -34,6 +35,7 @@ const ContentRow: React.FC<ContentRowProps> = ({
   videos,
   onVideoPress,
   style,
+  hasTVPreferredFocus,
 }) => {
   const scrollRef = useRef<ScrollView>(null)
   const [scrollOffset, setScrollOffset] = useState(0)
@@ -112,11 +114,12 @@ const ContentRow: React.FC<ContentRowProps> = ({
           scrollEventThrottle={16}
           onContentSizeChange={(w) => setContentWidth(w)}
         >
-          {videos.map((video) => (
+          {videos.map((video, idx) => (
             <View key={video.id} style={styles.cardWrapper}>
               <ContentCard
                 video={video}
                 onPress={onVideoPress}
+                hasTVPreferredFocus={hasTVPreferredFocus && idx === 0}
               />
             </View>
           ))}

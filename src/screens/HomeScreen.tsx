@@ -129,6 +129,7 @@ const HomeScreen: React.FC = () => {
           title="Featured"
           videos={featuredVideos()}
           onVideoPress={handleVideoPress}
+          hasTVPreferredFocus={true}
         />
       )}
 

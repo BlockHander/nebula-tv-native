@@ -55,6 +55,13 @@ const TVKeyboard: React.FC<TVKeyboardProps> = ({
   const [token, setToken] = useState('')
   const [focusedChar, setFocusedChar] = useState<string | null>(null)
   const scrollRef = useRef<ScrollView>(null)
+  const [preferredFocused, setPreferredFocused] = useState(false)
+
+  // Auto-focus submit after a short delay (for fallback keyboard)
+  useEffect(() => {
+    const timer = setTimeout(() => setPreferredFocused(true), 500)
+    return () => clearTimeout(timer)
+  }, [])
 
   // Scroll to bottom when characters are entered (show latest)
   useEffect(() => {
@@ -113,6 +120,7 @@ const TVKeyboard: React.FC<TVKeyboardProps> = ({
           onFocus={() => setFocusedChar(label)}
           onBlur={() => setFocusedChar(null)}
           activeOpacity={0.6}
+          hasTVPreferredFocus={isSubmit && preferredFocused}
           tvParallaxProperties={{
             enabled: true,
             shiftDistanceX: 3,

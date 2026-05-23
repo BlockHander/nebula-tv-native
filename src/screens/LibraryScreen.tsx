@@ -65,8 +65,10 @@ function AvatarCircle() {
 
 function PlaceholderCard({
   section,
+  index,
 }: {
   section: typeof PLACEHOLDER_SECTIONS[number]
+  index: number
 }) {
   const [focused, setFocused] = useState(false)
 
@@ -76,6 +78,7 @@ function PlaceholderCard({
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       style={[styles.placeholderCard, focused && styles.placeholderCardFocused]}
+      hasTVPreferredFocus={index === 0}
       tvParallaxProperties={{
         enabled: true,
         shiftDistanceX: 2,
@@ -159,8 +162,8 @@ const LibraryScreen: React.FC = () => {
       {/* ── Library Sections ── */}
       <View style={styles.sectionsContainer}>
         <Text style={styles.sectionGroupTitle}>Your Library</Text>
-        {PLACEHOLDER_SECTIONS.map((section) => (
-          <PlaceholderCard key={section.id} section={section} />
+        {PLACEHOLDER_SECTIONS.map((section, index) => (
+          <PlaceholderCard key={section.id} section={section} index={index} />
         ))}
       </View>
 

@@ -10,6 +10,7 @@ interface ContentCardProps {
   video: NebulaVideo
   onPress?: (video: NebulaVideo) => void
   style?: Record<string, unknown>
+  hasTVPreferredFocus?: boolean
 }
 
 function formatDuration(totalSeconds: number): string {
@@ -33,7 +34,7 @@ const TV_PARALLAX = {
   magnification: 1.04,
 }
 
-const ContentCard: React.FC<ContentCardProps> = ({ video, onPress, style }) => {
+const ContentCard: React.FC<ContentCardProps> = ({ video, onPress, style, hasTVPreferredFocus }) => {
   const [focused, setFocused] = useState(false)
   const thumbnailSrc = video.images.thumbnail?.src ?? FALLBACK_THUMBNAIL
 
@@ -48,6 +49,7 @@ const ContentCard: React.FC<ContentCardProps> = ({ video, onPress, style }) => {
       onFocus={() => setFocused(true)}
       onBlur={() => setFocused(false)}
       style={[styles.container, focused && styles.containerFocused, style]}
+      hasTVPreferredFocus={hasTVPreferredFocus}
       tvParallaxProperties={TV_PARALLAX}
     >
       {/* ── Thumbnail ── */}

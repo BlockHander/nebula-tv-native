@@ -1,84 +1,151 @@
 // ─────────────────────────────────────────────────
-// Nebula TV — Login Screen (TV-First Design)
+// Nebula TV — Login Screen (Remote-Friendly Pairing)
 //
-// Designed per Android TV Design for TV guidelines:
-//   - 10-foot viewing distance: large text (min 18sp)
-//   - Overscan-safe margins (48dp+ on all sides)
-//   - D-pad navigation with focus rings + parallax
-//   - Minimal text input (virtual character grid)
-//   - High contrast, lean-back-optimized layout
-//   - Single-screen (no scrolling needed)
+// Zero token typing on the TV remote.
+// Instead, uses a local network pairing flow:
 //
-// Pairing approach:
-//   TV-native virtual keyboard instead of TCP server
-//   — no local network dependency, works everywhere.
-//   QR code links to nebula.tv as a helpful shortcut,
-//   not a local pairing server.
+//   1. TV generates a short pairing code + local HTTP server
+//   2. QR code encodes the TV's local URL with the code
+//   3. User scans QR on phone → opens TV's pairing page
+//   4. User pastes their Nebula token on the phone (easy!)
+//   5. Phone POSTs the token to the TV over local network
+//   6. TV logs in automatically
+//
+// Fallback: A "Manual Entry" button opens a condensed
+// on-screen keyboard (last resort).
 // ─────────────────────────────────────────────────
 
-import React, { useState, useCallback } from 'react'
+import React, { useState, useEffect, useCallback, useRef } from 'react'
 import {
   View,
   Text,
   TouchableOpacity,
-  Modal,
   StyleSheet,
+  ActivityIndicator,
 } from 'react-native'
 import QRCode from 'react-native-qrcode-svg'
 import { useAuth } from '../context/AuthContext'
+import {
+  createPairingServer,
+  getLocalIp,
+} from '../services/PairingServer'
 import TVKeyboard from '../components/TVKeyboard'
-import { PAIRING_STEPS, QR_TARGET_URL, validateToken } from '../services/PairingServer'
 
-// ── TV-specific prop types (available at runtime on Android TV) ─────
-// Standard RN types don't include these, but they work on Android TV.
-const tvProps = {
-  parallax: {
-    enabled: true,
-    shiftDistanceX: 3,
-    shiftDistanceY: 3,
-    tiltAngle: 5,
-    magnification: 1.05,
-  },
-  parallaxSmall: {
-    enabled: true,
-    shiftDistanceX: 2,
-    shiftDistanceY: 2,
-    tiltAngle: 3,
-    magnification: 1.03,
-  },
-} as const
+// ── TV Parallax Props ─────────────────────────
+
+const TV_PARALLAX = {
+  enabled: true,
+  shiftDistanceX: 3,
+  shiftDistanceY: 3,
+  tiltAngle: 5,
+  magnification: 1.05,
+}
+const TV_PARALLAX_SM = {
+  enabled: true,
+  shiftDistanceX: 2,
+  shiftDistanceY: 2,
+  tiltAngle: 3,
+  magnification: 1.03,
+}
 
 // ── Component ─────────────────────────────────
 
 export default function LoginScreen() {
   const { login } = useAuth()
 
-  // ── Token Entry State ──
-  const [connecting, setConnecting] = useState(false)
+  // ── Pairing State ──
+  const [pairingCode, setPairingCode] = useState('')
+  const [localIp, setLocalIp] = useState('0.0.0.0')
+  const [serverPort, setServerPort] = useState(8888)
+  const [isServerRunning, setIsServerRunning] = useState(false)
+  const [isPaired, setIsPaired] = useState(false)
+  const [isConnecting, setIsConnecting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [ipDetected, setIpDetected] = useState(false)
+
+  // ── Manual Entry Fallback ──
+  const [showManualEntry, setShowManualEntry] = useState(false)
 
   // ── Help Modal ──
   const [helpVisible, setHelpVisible] = useState(false)
 
-  // ── QR Card ──
-  const [qrExpanded, setQrExpanded] = useState(false)
+  // ── Server Instance ──
+  const serverRef = useRef<ReturnType<typeof createPairingServer> | null>(null)
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
-  // ── Handle Token Submission ─────────────────
-  const handleTokenSubmit = useCallback(
-    async (token: string) => {
-      // Validate
-      const validation = validateToken(token)
-      if (!validation.valid) {
-        setError(validation.message ?? 'Invalid token')
-        return
+  // ── Start Pairing Server ──
+  useEffect(() => {
+    let mounted = true
+
+    async function initPairing() {
+      // Detect local IP
+      const ip = await getLocalIp()
+      if (!mounted) return
+      setLocalIp(ip)
+      setIpDetected(ip !== '0.0.0.0')
+
+      // Create and start pairing server
+      const server = createPairingServer(async (token) => {
+        // Token received via phone → auto-login
+        if (!mounted) return
+        setIsPaired(true)
+        setIsConnecting(true)
+        setError(null)
+
+        try {
+          await login(token.trim())
+          // Navigation handled by auth gate in App.tsx
+        } catch (err: unknown) {
+          const msg =
+            err && typeof err === 'object' && 'message' in err
+              ? (err as { message: string }).message
+              : 'Connection failed. Please check your token and try again.'
+          if (mounted) setError(msg)
+        } finally {
+          if (mounted) setIsConnecting(false)
+        }
+      })
+
+      serverRef.current = server
+      setPairingCode(server.code)
+
+      try {
+        const port = await server.start()
+        if (mounted) {
+          setServerPort(port)
+          setIsServerRunning(true)
+        }
+      } catch (err: unknown) {
+        console.warn('[NebulaPair] Failed to start pairing server:', err)
+        // Continue anyway — QR will show the pairing code only
+        if (mounted) setIsServerRunning(false)
       }
 
-      setConnecting(true)
+      // Poll pairing status as fallback
+      pollTimerRef.current = setInterval(() => {
+        if (serverRef.current?.isPaired()) {
+          // Already handled by callback above
+        }
+      }, 2000)
+    }
+
+    initPairing()
+
+    return () => {
+      mounted = false
+      if (pollTimerRef.current) clearInterval(pollTimerRef.current)
+      serverRef.current?.stop()
+    }
+  }, [login])
+
+  // ── Manual Token Submit (from TVKeyboard fallback) ──
+  const handleManualSubmit = useCallback(
+    async (manualToken: string) => {
+      setIsConnecting(true)
       setError(null)
 
       try {
-        await login(token.trim())
-        // Navigation handled automatically by auth gate in App.tsx
+        await login(manualToken.trim())
       } catch (err: unknown) {
         const msg =
           err && typeof err === 'object' && 'message' in err
@@ -86,120 +153,164 @@ export default function LoginScreen() {
             : 'Connection failed. Please check your token and try again.'
         setError(msg)
       } finally {
-        setConnecting(false)
+        setIsConnecting(false)
       }
     },
     [login],
   )
 
-  // ── Background: subtle gradient overlay ─────
-  // (done purely with opacity layers, no external deps)
+  // ── QR Code URL ─────────────────────────────
+  const qrUrl = isServerRunning
+    ? `http://${localIp}:${serverPort}/`
+    : 'https://nebula.tv'
 
+  // ── Render ──────────────────────────────────
   return (
     <View style={styles.container}>
-      {/* ── Content (overscan-safe) ── */}
       <View style={styles.content}>
-        {/* ── Branding ── */}
-        <View style={styles.brandSection}>
-          <Text style={styles.brandIcon}>✦</Text>
-          <Text style={styles.brandTitle}>Nebula TV</Text>
-          <Text style={styles.brandSubtitle}>
-            Enter your API token to sign in
-          </Text>
-        </View>
-
-        {/* ── Token Entry (TV Keyboard) ── */}
-        <TVKeyboard
-          onTokenComplete={handleTokenSubmit}
-          isConnecting={connecting}
-          error={error}
-        />
-
-        {/* ── Bottom Bar: Help + QR ── */}
-        <View style={styles.bottomBar}>
-          {/* Help Button */}
-          <TouchableOpacity
-            style={styles.helpButton}
-            onPress={() => setHelpVisible(true)}
-            activeOpacity={0.6}
-            tvParallaxProperties={tvProps.parallaxSmall}
-          >
-            <Text style={styles.helpButtonIcon}>?</Text>
-            <View style={styles.helpButtonTextWrap}>
-              <Text style={styles.helpButtonTitle}>
-                How to get my token
-              </Text>
-              <Text style={styles.helpButtonHint}>
-                3 steps &middot; 30 seconds
+        {showManualEntry ? (
+          <>
+            {/* ── Manual Entry Fallback ── */}
+            <View style={styles.brandSection}>
+              <Text style={styles.brandIcon}>✦</Text>
+              <Text style={styles.brandTitle}>Nebula TV</Text>
+              <Text style={styles.brandSubtitle}>
+                Enter your API token manually
               </Text>
             </View>
-          </TouchableOpacity>
-
-          {/* QR Code Toggle */}
-          <TouchableOpacity
-            style={styles.qrToggle}
-            onPress={() => setQrExpanded((p) => !p)}
-            activeOpacity={0.6}
-            tvParallaxProperties={tvProps.parallaxSmall}
-          >
-            <View style={styles.qrInner}>
-              <Text style={styles.qrToggleLabel}>
-                {qrExpanded ? 'Hide QR' : 'Scan QR'}
+            <TVKeyboard
+              onTokenComplete={handleManualSubmit}
+              isConnecting={isConnecting}
+              error={error}
+            />
+            <TouchableOpacity
+              style={styles.backToPairing}
+              onPress={() => setShowManualEntry(false)}
+              activeOpacity={0.7}
+              tvParallaxProperties={TV_PARALLAX_SM}
+            >
+              <Text style={styles.backToPairingText}>
+                ← Back to pairing
               </Text>
-              <Text style={styles.qrToggleSub}>
-                Open nebula.tv
+            </TouchableOpacity>
+          </>
+        ) : (
+          <>
+            {/* ── Branding ── */}
+            <View style={styles.brandSection}>
+              <Text style={styles.brandIcon}>✦</Text>
+              <Text style={styles.brandTitle}>Nebula TV</Text>
+              <Text style={styles.brandSubtitle}>
+                Connect your phone to sign in
               </Text>
             </View>
-            {qrExpanded && (
-              <View style={styles.qrCodeBox}>
-                <QRCode
-                  value={QR_TARGET_URL}
-                  size={100}
-                  backgroundColor="#ffffff"
-                  color="#030712"
-                />
+
+            {/* ── Pairing Code (large, readable from couch) ── */}
+            <View style={styles.pairingSection}>
+              <View style={styles.pairingCodeContainer}>
+                <Text style={styles.pairingCodeLabel}>Pairing Code</Text>
+                <Text style={styles.pairingCode}>{pairingCode}</Text>
+              </View>
+
+              {/* ── QR Code ── */}
+              <View style={styles.qrContainer}>
+                <View style={styles.qrWrapper}>
+                  <QRCode
+                    value={qrUrl}
+                    size={180}
+                    backgroundColor="#ffffff"
+                    color="#030712"
+                  />
+                </View>
+              </View>
+
+              {/* ── Connection Info ── */}
+              <View style={styles.connectionInfo}>
+                {isServerRunning && ipDetected ? (
+                  <>
+                    <Text style={styles.connectionUrl}>
+                      {localIp}:{serverPort}
+                    </Text>
+                    <Text style={styles.connectionHint}>
+                      Make sure your phone is on the same Wi-Fi network
+                    </Text>
+                  </>
+                ) : (
+                  <Text style={styles.connectionFallback}>
+                    Open {'https://nebula.tv'} on your phone to get your token
+                  </Text>
+                )}
+              </View>
+            </View>
+
+            {/* ── Status ── */}
+            {isConnecting && (
+              <View style={styles.statusContainer}>
+                <ActivityIndicator size="large" color="#3b82f6" />
+                <Text style={styles.statusText}>
+                  {isPaired
+                    ? 'Token received! Signing in...'
+                    : 'Waiting for phone...'}
+                </Text>
               </View>
             )}
-          </TouchableOpacity>
-        </View>
 
-        {/* ── Error Banner (if set outside keyboard) ── */}
+            {error && (
+              <View style={styles.errorBox}>
+                <Text style={styles.errorText}>{error}</Text>
+              </View>
+            )}
+
+            {/* ── Bottom Bar ── */}
+            <View style={styles.bottomBar}>
+              {/* Help Button */}
+              <TouchableOpacity
+                style={styles.helpButton}
+                onPress={() => setHelpVisible(true)}
+                activeOpacity={0.6}
+                tvParallaxProperties={TV_PARALLAX_SM}
+              >
+                <Text style={styles.helpButtonIcon}>?</Text>
+                <View style={styles.helpButtonTextWrap}>
+                  <Text style={styles.helpButtonTitle}>
+                    Get your token
+                  </Text>
+                  <Text style={styles.helpButtonHint}>
+                    How to find it
+                  </Text>
+                </View>
+              </TouchableOpacity>
+
+              {/* Manual Entry Fallback */}
+              <TouchableOpacity
+                style={styles.manualButton}
+                onPress={() => setShowManualEntry(true)}
+                activeOpacity={0.6}
+                tvParallaxProperties={TV_PARALLAX_SM}
+              >
+                <Text style={styles.manualButtonIcon}>⌨</Text>
+                <Text style={styles.manualButtonText}>Manual Entry</Text>
+              </TouchableOpacity>
+            </View>
+          </>
+        )}
       </View>
 
       {/* ── Help Modal ── */}
-      <Modal
-        visible={helpVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setHelpVisible(false)}
-      >
+      {helpVisible && (
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              Get Your Nebula Token
-            </Text>
+            <Text style={styles.modalTitle}>Get Your Nebula Token</Text>
             <Text style={styles.modalSubtitle}>
               Follow these steps on your phone or computer
             </Text>
 
             <View style={styles.stepsList}>
-              {PAIRING_STEPS.map((step, index) => (
-                <View key={index} style={styles.stepRow}>
-                  <View style={styles.stepNumber}>
-                    <Text style={styles.stepNumberText}>
-                      {index + 1}
-                    </Text>
-                  </View>
-                  <View style={styles.stepContent}>
-                    <Text style={styles.stepTitle}>
-                      {step.title}
-                    </Text>
-                    <Text style={styles.stepDetail}>
-                      {step.detail}
-                    </Text>
-                  </View>
-                </View>
-              ))}
+              <Step num={1} title="Open nebula.tv" detail="Log in with your Nebula account" />
+              <Step num={2} title="Open Developer Tools" detail="Press F12 or Cmd+Option+I, then go to the Console tab" />
+              <Step num={3} title="Get your token" detail='Type __NEBULA_DEV_TOKEN__ and press Enter' />
+              <Step num={4} title="Copy & paste" detail="Copy the token, then scan the QR code to pair with your TV" />
+              <Step num={5} title="Or use manual entry" detail="If scanning doesn't work, use the Manual Entry button" />
             </View>
 
             <View style={styles.modalHelpFooter}>
@@ -213,33 +324,42 @@ export default function LoginScreen() {
               style={styles.modalCloseButton}
               onPress={() => setHelpVisible(false)}
               activeOpacity={0.6}
-              tvParallaxProperties={tvProps.parallax}
+              tvParallaxProperties={TV_PARALLAX}
               hasTVPreferredFocus
             >
               <Text style={styles.modalCloseText}>Got it</Text>
             </TouchableOpacity>
           </View>
         </View>
-      </Modal>
+      )}
+    </View>
+  )
+}
+
+// ── Step Component ────────────────────────────
+
+function Step({ num, title, detail }: { num: number; title: string; detail: string }) {
+  return (
+    <View style={styles.stepRow}>
+      <View style={styles.stepNumber}>
+        <Text style={styles.stepNumberText}>{num}</Text>
+      </View>
+      <View style={styles.stepContent}>
+        <Text style={styles.stepTitle}>{title}</Text>
+        <Text style={styles.stepDetail}>{detail}</Text>
+      </View>
     </View>
   )
 }
 
 // ── Styles ────────────────────────────────────
-// TV Design Guidelines applied:
-//   - 48dp+ overscan margin (padding)
-//   - Min body text 18sp
-//   - Min touch target 48dp
-//   - High contrast (light text on dark bg)
-//   - Consistent 8dp spacing grid
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#030712',
-    padding: 48, // Overscan-safe margin
+    padding: 48,
   },
-
   content: {
     flex: 1,
     maxWidth: 920,
@@ -251,23 +371,123 @@ const styles = StyleSheet.create({
   // ── Branding ──
   brandSection: {
     alignItems: 'center',
-    marginBottom: 28,
+    marginBottom: 24,
   },
   brandIcon: {
-    fontSize: 32,
+    fontSize: 36,
     color: '#3b82f6',
-    marginBottom: 6,
+    marginBottom: 4,
   },
   brandTitle: {
-    fontSize: 32,
-    fontWeight: '700',
+    fontSize: 34,
+    fontWeight: '800',
     color: '#f8fafc',
     letterSpacing: 1,
   },
   brandSubtitle: {
     fontSize: 18,
     color: '#94a3b8',
-    marginTop: 6,
+    marginTop: 4,
+  },
+
+  // ── Pairing Section ──
+  pairingSection: {
+    alignItems: 'center',
+    gap: 20,
+  },
+  pairingCodeContainer: {
+    alignItems: 'center',
+    backgroundColor: '#0f172a',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#1e293b',
+    paddingHorizontal: 48,
+    paddingVertical: 16,
+  },
+  pairingCodeLabel: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#64748b',
+    textTransform: 'uppercase',
+    letterSpacing: 2,
+    marginBottom: 8,
+  },
+  pairingCode: {
+    fontSize: 56,
+    fontWeight: '900',
+    color: '#60a5fa',
+    fontFamily: 'monospace',
+    letterSpacing: 14,
+    textAlign: 'center',
+  },
+  qrContainer: {},
+  qrWrapper: {
+    backgroundColor: '#ffffff',
+    borderRadius: 16,
+    padding: 10,
+    borderWidth: 2,
+    borderColor: '#1e293b',
+  },
+
+  // ── Connection Info ──
+  connectionInfo: {
+    alignItems: 'center',
+    maxWidth: 440,
+  },
+  connectionUrl: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#3b82f6',
+    fontFamily: 'monospace',
+    letterSpacing: 1,
+    marginBottom: 6,
+  },
+  connectionHint: {
+    fontSize: 15,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+  connectionFallback: {
+    fontSize: 15,
+    color: '#64748b',
+    textAlign: 'center',
+    lineHeight: 22,
+  },
+
+  // ── Status ──
+  statusContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 12,
+    marginTop: 20,
+    backgroundColor: 'rgba(59, 130, 246, 0.08)',
+    borderRadius: 12,
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+  },
+  statusText: {
+    fontSize: 17,
+    fontWeight: '600',
+    color: '#93c5fd',
+  },
+
+  // ── Error ──
+  errorBox: {
+    backgroundColor: 'rgba(239, 68, 68, 0.12)',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: 'rgba(239, 68, 68, 0.4)',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+    marginTop: 16,
+  },
+  errorText: {
+    color: '#f87171',
+    fontSize: 16,
+    textAlign: 'center',
+    fontWeight: '500',
   },
 
   // ── Bottom Bar ──
@@ -275,10 +495,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 16,
-    marginTop: 20,
+    marginTop: 28,
   },
-
-  // ── Help Button ──
   helpButton: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -314,40 +532,43 @@ const styles = StyleSheet.create({
     color: '#64748b',
     marginTop: 1,
   },
-
-  // ── QR Toggle ──
-  qrToggle: {
+  manualButton: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#0f172a',
+    backgroundColor: '#1e293b',
     borderRadius: 14,
     borderWidth: 1,
-    borderColor: '#1e293b',
+    borderColor: '#334155',
     paddingVertical: 16,
     paddingHorizontal: 20,
-    gap: 14,
+    gap: 12,
     minHeight: 64,
   },
-  qrInner: {},
-  qrToggleLabel: {
+  manualButtonIcon: {
+    fontSize: 22,
+  },
+  manualButtonText: {
     fontSize: 17,
     fontWeight: '700',
-    color: '#f1f5f9',
+    color: '#cbd5e1',
   },
-  qrToggleSub: {
-    fontSize: 14,
+
+  // ── Back to Pairing ──
+  backToPairing: {
+    alignSelf: 'center',
+    marginTop: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+  },
+  backToPairingText: {
+    fontSize: 17,
+    fontWeight: '600',
     color: '#64748b',
-    marginTop: 1,
-  },
-  qrCodeBox: {
-    backgroundColor: '#ffffff',
-    borderRadius: 10,
-    padding: 8,
   },
 
   // ── Help Modal ──
   modalOverlay: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(3, 7, 18, 0.88)',
     justifyContent: 'center',
     alignItems: 'center',
@@ -375,8 +596,6 @@ const styles = StyleSheet.create({
     marginBottom: 28,
     textAlign: 'center',
   },
-
-  // ── Steps ──
   stepsList: {
     width: '100%',
     gap: 16,
@@ -415,8 +634,6 @@ const styles = StyleSheet.create({
     color: '#94a3b8',
     lineHeight: 22,
   },
-
-  // ── Modal Footer ──
   modalHelpFooter: {
     backgroundColor: 'rgba(59, 130, 246, 0.08)',
     borderRadius: 10,
@@ -430,8 +647,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 20,
   },
-
-  // ── Modal Close ──
   modalCloseButton: {
     backgroundColor: '#1d4ed8',
     borderRadius: 12,

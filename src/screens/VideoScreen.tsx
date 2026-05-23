@@ -216,16 +216,19 @@ export default function VideoScreen() {
         <TouchableOpacity style={[styles.backButton, backFocused && styles.backButtonFocused]}
           onPress={handleBack} activeOpacity={0.7}
           onFocus={() => setBackFocused(true)} onBlur={() => setBackFocused(false)}
+          hasTVPreferredFocus={!streamInfo && !streamLoading}
           tvParallaxProperties={TV_PARALLAX_SM}>
           <Text style={styles.backButtonText}>← Back</Text>
         </TouchableOpacity>
 
         {streamInfo && showControls && (
-          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={handlePlayerTap}>
+          <TouchableOpacity style={StyleSheet.absoluteFill} activeOpacity={1} onPress={handlePlayerTap}
+            nextFocusUp={undefined} nextFocusDown={undefined}>
             <View style={styles.controlsOverlay}>
               <TouchableOpacity style={[styles.controlButton, ctrlFocused && styles.controlButtonFocused]}
                 onPress={togglePlayPause} activeOpacity={0.7}
                 onFocus={() => setCtrlFocused(true)} onBlur={() => setCtrlFocused(false)}
+                hasTVPreferredFocus={true}
                 tvParallaxProperties={TV_PARALLAX}>
                 <Text style={styles.controlIcon}>{isPlaying ? '⏸' : '▶'}</Text>
               </TouchableOpacity>

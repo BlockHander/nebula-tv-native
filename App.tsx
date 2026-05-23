@@ -76,9 +76,11 @@ function TVTabBar({
 
   return (
     <View style={tabStyles.bar}>
-      {TABS.map((tab) => {
+      {TABS.map((tab, index) => {
         const isActive = activeTab === tab.key
         const isFocused = focusedTab === tab.key
+        const isFirst = index === 0
+        const isLast = index === TABS.length - 1
         return (
           <TouchableOpacity
             key={tab.key}
@@ -91,6 +93,9 @@ function TVTabBar({
             onFocus={() => setFocusedTab(tab.key)}
             onBlur={() => setFocusedTab(null)}
             activeOpacity={0.7}
+            hasTVPreferredFocus={isFirst}
+            nextFocusLeft={index > 0 ? TABS[index - 1].key : undefined}
+            nextFocusRight={index < TABS.length - 1 ? TABS[index + 1].key : undefined}
             tvParallaxProperties={{
               enabled: true,
               shiftDistanceX: 2,
