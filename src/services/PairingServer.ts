@@ -16,7 +16,7 @@
 //   8. UI reacts to token being received
 // ─────────────────────────────────────────────────
 
-import TcpServer from 'react-native-tcp-socket';
+import TcpServer, { Socket as TcpSocket } from 'react-native-tcp-socket';
 import Network from 'expo-network';
 
 // ── Pairing Code ────────────────────────────────
@@ -35,13 +35,70 @@ export function generatePairingCode(): string {
 
 // ── IP Detection ────────────────────────────────
 
+/**
+ * Get the primary LAN IP address (192.168.x.x).
+ *
+ * Strategy:
+ *   1. expo-network → fast, native WiFi IP
+ *   2. Socket trick  → connects a TCP socket to 8.8.8.8:53
+ *      without sending data. The OS binds to the correct
+ *      local interface, then we read socket.localAddress.
+ */
+function getLocalIpViaSocket(timeoutMs = 3000): Promise<string> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const socket: any = new (TcpSocket as any)();
+
+    const done = (ip: string) => {
+      if (settled) return;
+      settled = true;
+      try { socket.destroy(); } catch {}
+      resolve(ip);
+    };
+
+    const timer = setTimeout(() => done('0.0.0.0'), timeoutMs);
+
+    socket.on('connect', () => {
+      const addr = socket.address?.() || {};
+      const ip = addr.address || socket.localAddress || '';
+      clearTimeout(timer);
+      done(ip && ip !== '127.0.0.1' ? ip : '0.0.0.0');
+    });
+
+    socket.on('error', () => {
+      clearTimeout(timer);
+      done('0.0.0.0');
+    });
+
+    try {
+      socket.connect({ host: '8.8.8.8', port: 53, connectTimeout: timeoutMs });
+    } catch {
+      clearTimeout(timer);
+      done('0.0.0.0');
+    }
+  });
+}
+
 export async function getLocalIp(): Promise<string> {
+  // Method 1: expo-network (fast, uses Android WifiManager)
   try {
     const ip = await Network.getIpAddressAsync();
-    return ip || '0.0.0.0';
+    if (ip && ip !== '0.0.0.0' && ip !== '127.0.0.1') {
+      return ip;
+    }
   } catch {
-    return '0.0.0.0';
+    // Fall through to socket method
   }
+
+  // Method 2: Socket trick — connect to a public DNS to discover local IP
+  try {
+    const ip = await getLocalIpViaSocket();
+    if (ip !== '0.0.0.0') return ip;
+  } catch {
+    // Fall through to default
+  }
+
+  return '0.0.0.0';
 }
 
 // ── HTTP Response Builder ───────────────────────
@@ -240,7 +297,7 @@ function statusJson(paired: boolean, pairedToken: string): string {
 export interface PairingServerInstance {
   code: string;
   port: number;
-  start: () => Promise<number>;       // returns port
+  start: (host?: string) => Promise<number>;       // returns port, binds to given host
   stop: () => void;
   getToken: () => string | null;
   isPaired: () => boolean;
@@ -330,9 +387,11 @@ export function createPairingServer(
   return {
     code,
     port: 8888,
-    async start(): Promise<number> {
+    async start(host = '0.0.0.0'): Promise<number> {
       return new Promise((resolve, reject) => {
         try {
+          const bindHost = host && host !== '0.0.0.0' ? host : '0.0.0.0';
+
           server = TcpServer.createServer((sock: any) => {
             let clientBuf = '';
 
@@ -359,8 +418,8 @@ export function createPairingServer(
             reject(err);
           });
 
-          server.listen({ port: 8888, host: '0.0.0.0' }, () => {
-            console.log(`[NebulaPair] Server listening on port 8888`);
+          server.listen({ port: 8888, host: bindHost }, () => {
+            console.log(`[NebulaPair] Server listening on ${bindHost}:8888`);
             resolve(8888);
           });
         } catch (err) {

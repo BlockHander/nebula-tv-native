@@ -110,7 +110,7 @@ export default function LoginScreen() {
       setPairingCode(server.code)
 
       try {
-        const port = await server.start()
+        const port = await server.start(ip);
         if (mounted) {
           setServerPort(port)
           setIsServerRunning(true)
