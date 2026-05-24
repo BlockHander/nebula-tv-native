@@ -82,8 +82,8 @@ jobs:
             echo "short_url=$SHORT_URL" >> $GITHUB_OUTPUT
             echo "Generated short URL: $SHORT_URL"
           else
-            echo "short_url=TinyURL not generated — create one at https://tinyurl.com" >> $GITHUB_OUTPUT
-            echo "TinyURL not generated via API (response: $SHORT_URL)"
+            echo "short_url=Short URL not generated — create one at https://is.gd or https://tinyurl.com" >> $GITHUB_OUTPUT
+            echo "is.gd short URL generation failed (response: $SHORT_URL)"
           fi
 
       - name: Create GitHub Release
